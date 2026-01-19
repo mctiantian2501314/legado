@@ -288,6 +288,7 @@ dependencies {
     //加解密类库,有些书源使用
     //noinspection GradleDependency,GradlePackageUpdate
     implementation(libs.hutool.crypto)
+    implementation 'org.bouncycastle:bcprov-jdk15on:1.70'
 
     //firebase, 崩溃统计和性能统计
     implementation(platform(libs.firebase.bom))

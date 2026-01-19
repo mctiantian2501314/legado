@@ -77,6 +77,7 @@ recyclerview = "1.4.0"
 viewpager2 = "1.1.0"
 #noinspection GradleDependency
 firebaseBom = "33.2.0"
+bouncycastle = "1.70"
 
 [libraries]
 
@@ -202,6 +203,7 @@ mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 
 renderscript-intrinsics-replacement-toolkit = { module = "com.github.TomasValenta:renderscript-intrinsics-replacement-toolkit", version = "8eaa829ddd" }
 zxing-lite = { module = "com.github.jenly1314:zxing-lite", version.ref = "zxingLite" }
+bouncycastle = { module = "org.bouncycastle:bcprov-jdk15on", version.ref = "bouncycastle" }
 
 [bundles]
 coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-android"]

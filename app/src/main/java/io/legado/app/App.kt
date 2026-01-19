@@ -57,10 +57,12 @@ import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isDebuggable
 import kotlinx.coroutines.launch
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.chromium.base.ThreadUtils
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.net.URL
+import java.security.Security
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 
@@ -70,6 +72,7 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        fixSecurityProviders()
         CrashHandler(this)
         if (isDebuggable) {
             ThreadUtils.setThreadAssertsDisabledForTesting(true)
@@ -124,6 +127,15 @@ class App : Application() {
             if (AppConfig.syncBookProgress) {
                 AppWebDav.downloadAllBookProgress()
             }
+        }
+    }
+
+    private fun fixSecurityProviders() {
+        try {
+            Security.removeProvider("BC")
+            Security.addProvider(BouncyCastleProvider())
+        } catch (e: Exception) {
+            LogUtils.e("Security", "Failed to fix security providers", e)
         }
     }
 
