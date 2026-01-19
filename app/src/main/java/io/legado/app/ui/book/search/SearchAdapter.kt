@@ -90,11 +90,8 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
             tvIntroduce.text = searchBook.trimIntro(context)
             upKind(binding, searchBook.getKindList())
             ivCover.load(
-                searchBook.coverUrl,
-                searchBook.name,
-                searchBook.author,
-                AppConfig.loadCoverOnlyWifi,
-                searchBook.origin
+                searchBook,
+                AppConfig.loadCoverOnlyWifi
             )
         }
     }
@@ -110,11 +107,8 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
                     "isInBookshelf" -> ivInBookshelf.isVisible =
                         callBack.isInBookshelf(searchBook.name, searchBook.author)
                     "cover" -> ivCover.load(
-                        searchBook.coverUrl,
-                        searchBook.name,
-                        searchBook.author,
-                        false,
-                        searchBook.origin
+                        searchBook,
+                        false
                     )
                 }
             }

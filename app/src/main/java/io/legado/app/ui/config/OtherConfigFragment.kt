@@ -14,6 +14,7 @@ import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.databinding.DialogEditCodeBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
@@ -27,9 +28,12 @@ import io.legado.app.model.ImageProvider
 import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.video.config.SettingsDialog
+import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
@@ -57,6 +61,8 @@ class OtherConfigFragment : PreferenceFragment(),
         }
     }
 
+    private var onlyUpdateReadPref: Preference? = null
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         putPrefBoolean(PreferKey.processText, isProcessTextEnabled())
         addPreferencesFromResource(R.xml.pref_config_other)
@@ -71,6 +77,9 @@ class OtherConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
         upPreferenceSummary(PreferKey.imageRetainNum, AppConfig.imageRetainNum.toString())
         upPreferenceSummary(PreferKey.sourceEditMaxLine, AppConfig.sourceEditMaxLine.toString())
+        onlyUpdateReadPref = findPreference<Preference>(PreferKey.onlyUpdateRead)?.also {
+            it.isVisible = AppConfig.autoRefreshBook
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -88,6 +97,8 @@ class OtherConfigFragment : PreferenceFragment(),
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             PreferKey.userAgent -> showUserAgentDialog()
+            PreferKey.customHosts -> showCustomHostsDialog()
+            PreferKey.videoSetting -> showDialogFragment(SettingsDialog(requireActivity()))
             PreferKey.defaultBookTreeUri -> localBookTreeSelect.launch {
                 title = getString(R.string.select_book_folder)
                 mode = HandleFileContract.DIR_SYS
@@ -221,6 +232,11 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.sourceEditMaxLine -> {
                 upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())
             }
+
+            PreferKey.autoRefresh -> {
+                val isEnabled = sharedPreferences?.getBoolean(key, false) ?: false
+                onlyUpdateReadPref?.isVisible = isEnabled
+            }
         }
     }
 
@@ -264,6 +280,27 @@ class OtherConfigFragment : PreferenceFragment(),
                     removePref(PreferKey.userAgent)
                 } else {
                     putPrefString(PreferKey.userAgent, userAgent)
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    @SuppressLint("InflateParams")
+    private fun showCustomHostsDialog() {
+        alert(getString(R.string.custom_hosts)) {
+            val alertBinding = DialogEditCodeBinding.inflate(layoutInflater).apply {
+                editViewC.hint = getString(R.string.json_format)
+                editView.addJsonPattern()
+                editView.setText(AppConfig.customHosts)
+            }
+            customView { alertBinding.root }
+            okButton {
+                val customHosts = alertBinding.editView.text?.toString()
+                if (customHosts.isJsonObject()) {
+                    putPrefString(PreferKey.customHosts, customHosts!!)
+                } else {
+                    removePref(PreferKey.customHosts)
                 }
             }
             cancelButton()

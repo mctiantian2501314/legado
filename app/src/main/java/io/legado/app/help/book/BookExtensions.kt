@@ -3,6 +3,7 @@
 package io.legado.app.help.book
 
 import android.net.Uri
+import androidx.core.net.toUri
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppLog
@@ -37,6 +38,9 @@ import kotlin.math.min
 
 val Book.isAudio: Boolean
     get() = isType(BookType.audio)
+
+val Book.isVideo: Boolean
+    get() = isType(BookType.video)
 
 val Book.isImage: Boolean
     get() = isType(BookType.image)
@@ -114,7 +118,7 @@ fun Book.getLocalUri(): Uri {
         return uri
     }
     uri = if (bookUrl.isUri()) {
-        Uri.parse(bookUrl)
+        bookUrl.toUri()
     } else {
         Uri.fromFile(File(bookUrl))
     }
@@ -130,7 +134,7 @@ fun Book.getLocalUri(): Uri {
 
     // 查找书籍保存目录
     if (!defaultBookDir.isNullOrBlank()) {
-        val treeUri = Uri.parse(defaultBookDir)
+        val treeUri = defaultBookDir.toUri()
         val treeFileDoc = FileDoc.fromUri(treeUri, true)
         if (!treeFileDoc.exists()) {
             appCtx.toastOnUi("书籍保存目录失效，请重新设置！")
@@ -149,7 +153,7 @@ fun Book.getLocalUri(): Uri {
     // 查找添加本地选择的目录
     if (!importBookDir.isNullOrBlank() && defaultBookDir != importBookDir) {
         val treeUri = if (importBookDir.isUri()) {
-            Uri.parse(importBookDir)
+            importBookDir.toUri()
         } else {
             Uri.fromFile(File(importBookDir))
         }
@@ -171,7 +175,7 @@ fun Book.getLocalUri(): Uri {
 fun Book.getArchiveUri(): Uri? {
     val defaultBookDir = AppConfig.defaultBookTreeUri
     return if (isArchive && !defaultBookDir.isNullOrBlank()) {
-        FileDoc.fromUri(Uri.parse(defaultBookDir), true)
+        FileDoc.fromUri(defaultBookDir.toUri(), true)
             .find(archiveName)?.uri
     } else {
         null
@@ -221,7 +225,7 @@ fun Book.clearType() {
 fun Book.isType(@BookType.Type bookType: Int): Boolean = type and bookType > 0
 
 fun Book.upType() {
-    if (type < 8) {
+    if (type < 4) {
         type = when (type) {
             BookSourceType.image -> BookType.image
             BookSourceType.audio -> BookType.audio

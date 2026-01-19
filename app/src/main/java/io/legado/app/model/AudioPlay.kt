@@ -12,14 +12,18 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.globalExecutor
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.AudioPlayService
+import io.legado.app.ui.book.source.SourceCallBack
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
@@ -63,13 +67,18 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durChapterPos = 0
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
+    var durLyric: String? = null
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
     val loadingChapters = arrayListOf<Int>()
+    private val readRecord = ReadRecord()
+    var readStartTime: Long = System.currentTimeMillis()
+    val executor = globalExecutor
 
     fun changePlayMode() {
         playMode = playMode.next()
+        book?.setPlayMode(playMode.ordinal)
         postEvent(EventBus.PLAY_MODE_CHANGED, playMode)
     }
 
@@ -86,6 +95,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             durChapterIndex = book.durChapterIndex
             durChapterPos = book.durChapterPos
             durPlayUrl = ""
+            durLyric = null
             durAudioSize = 0
         }
         upDurChapter()
@@ -94,6 +104,8 @@ object AudioPlay : CoroutineScope by MainScope() {
     fun resetData(book: Book) {
         stop()
         AudioPlay.book = book
+        readRecord.bookName = book.name
+        readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) {
             book.simulatedTotalChapterNum()
@@ -103,10 +115,31 @@ object AudioPlay : CoroutineScope by MainScope() {
         bookSource = book.getBookSource()
         durChapterIndex = book.durChapterIndex
         durChapterPos = book.durChapterPos
+        PlayMode.entries.getOrNull(book.getPlayMode())?.let{
+            playMode = it
+            postEvent(EventBus.PLAY_MODE_CHANGED, it)
+        }
+        val playSpeed = book.getPlaySpeed()
+        AudioPlayService.playSpeed = playSpeed
+        postEvent(EventBus.AUDIO_SPEED, playSpeed)
         durPlayUrl = ""
+        durLyric = null
         durAudioSize = 0
         upDurChapter()
+        SourceCallBack.callBackBook(SourceCallBack.START_READ, bookSource, book, durChapter)
         postEvent(EventBus.AUDIO_BUFFER_PROGRESS, 0)
+    }
+
+    fun upReadTime() {
+        if (!AppConfig.enableReadRecord) {
+            return
+        }
+        executor.execute {
+            readRecord.readTime = readRecord.readTime + System.currentTimeMillis() - readStartTime
+            readStartTime = System.currentTimeMillis()
+            readRecord.lastRead = System.currentTimeMillis()
+            appDb.readRecordDao.insert(readRecord)
+        }
     }
 
     private fun addLoading(index: Int): Boolean {
@@ -165,6 +198,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                     }.onCancel {
                         removeLoading(index)
                     }.onFinally {
+                        callback?.upLyric(durLyric)
                         removeLoading(index)
                     }
             } else {
@@ -180,6 +214,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     private fun contentLoadFinish(chapter: BookChapter, content: String) {
         if (chapter.index == book?.durChapterIndex) {
             durPlayUrl = content
+            durLyric = chapter.getVariable("lyric")
             upPlayUrl()
         }
     }
@@ -225,6 +260,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun pause(context: Context) {
         if (AudioPlayService.isRun) {
+            readStartTime = System.currentTimeMillis()
             context.startService<AudioPlayService> {
                 action = IntentAction.pause
             }
@@ -247,14 +283,18 @@ object AudioPlay : CoroutineScope by MainScope() {
         }
     }
 
-    fun adjustSpeed(adjust: Float) {
+    fun setSpeed(speed: Float) {
         if (AudioPlayService.isRun) {
+            book?.setPlaySpeed(speed)
+            val clampedSpeed = speed.coerceIn(0.5f, 2.0f)
             context.startService<AudioPlayService> {
-                action = IntentAction.adjustSpeed
-                putExtra("adjust", adjust)
+                action = IntentAction.setSpeed
+                putExtra("speed", clampedSpeed)
             }
         }
     }
+
+     
 
     fun adjustProgress(position: Int) {
         durChapterPos = position
@@ -274,6 +314,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 durChapterIndex = index
                 durChapterPos = 0
                 durPlayUrl = ""
+                durLyric = null
                 saveRead()
                 loadPlayUrl()
             }
@@ -287,6 +328,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 durChapterIndex -= 1
                 durChapterPos = 0
                 durPlayUrl = ""
+                durLyric = null
                 saveRead()
                 loadPlayUrl()
             }
@@ -295,12 +337,14 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun next() {
         stopPlay()
+        upReadTime()
         when (playMode) {
             PlayMode.LIST_END_STOP -> {
                 if (durChapterIndex + 1 < simulatedChapterSize) {
                     durChapterIndex += 1
                     durChapterPos = 0
                     durPlayUrl = ""
+                    durLyric = null
                     saveRead()
                     loadPlayUrl()
                 }
@@ -309,6 +353,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             PlayMode.SINGLE_LOOP -> {
                 durChapterPos = 0
                 durPlayUrl = ""
+                durLyric = null
                 saveRead()
                 loadPlayUrl()
             }
@@ -317,6 +362,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 durChapterIndex = (0 until simulatedChapterSize).random()
                 durChapterPos = 0
                 durPlayUrl = ""
+                durLyric = null
                 saveRead()
                 loadPlayUrl()
             }
@@ -325,6 +371,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 durChapterIndex = (durChapterIndex + 1) % simulatedChapterSize
                 durChapterPos = 0
                 durPlayUrl = ""
+                durLyric = null
                 saveRead()
                 loadPlayUrl()
             }
@@ -357,7 +404,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         }
     }
 
-    fun saveRead() {
+    fun saveRead(first: Boolean = false) {
         val book = book ?: return
         Coroutine.async {
             book.lastCheckCount = 0
@@ -365,12 +412,13 @@ object AudioPlay : CoroutineScope by MainScope() {
             val chapterChanged = book.durChapterIndex != durChapterIndex
             book.durChapterIndex = durChapterIndex
             book.durChapterPos = durChapterPos
-            if (chapterChanged) {
+            if (first || chapterChanged) {
                 appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
                     book.durChapterTitle = it.getDisplayTitle(
                         ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
                         book.getUseReplaceRule()
                     )
+                    SourceCallBack.callBackBook(SourceCallBack.SAVE_READ, bookSource, book, it)
                 }
             }
             book.update()
@@ -427,7 +475,8 @@ object AudioPlay : CoroutineScope by MainScope() {
     interface CallBack {
 
         fun upLoading(loading: Boolean)
-
+        fun upLyric(lyric: String?)
+        fun upLyricP(position: Int)
     }
 
 }

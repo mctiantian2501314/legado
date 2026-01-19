@@ -102,7 +102,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     override var sortAscending = true
         private set
     private var snackBar: Snackbar? = null
-    private var showDuplicationSource = false
+    private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
     private val qrResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
@@ -254,9 +254,9 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 searchView.setQuery(getString(R.string.disabled_explore), true)
             }
 
-            R.id.menu_show_same_source -> {
+            R.id.menu_group_sources_by_domain -> {
                 item.isChecked = !item.isChecked
-                showDuplicationSource = item.isChecked
+                groupSourcesByDomain = item.isChecked
                 adapter.showSourceHost = item.isChecked
                 upBookSource(searchView.query?.toString())
             }
@@ -332,7 +332,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 }
             }.map { data ->
                 hostMap.clear()
-                if (showDuplicationSource) {
+                if (groupSourcesByDomain) {
                     data.sortedWith(
                         compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
                             .thenBy { getSourceHost(it.bookSourceUrl) }
@@ -386,7 +386,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             }.flowOn(IO).conflate().collect { data ->
                 adapter.setItems(data, adapter.diffItemCallback, !Debug.isChecking)
                 itemTouchCallback.isCanDrag =
-                    sort == BookSourceSort.Default && !showDuplicationSource
+                    sort == BookSourceSort.Default && !groupSourcesByDomain
                 delay(500)
             }
         }
@@ -470,11 +470,11 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 searchView.query?.toString(),
                 sortAscending,
                 sort
-            ) { file ->
+            ) { file, name ->
                 exportDir.launch {
                     mode = HandleFileContract.EXPORT
                     fileData = HandleFileContract.FileData(
-                        "bookSource.json",
+                        name,
                         file,
                         "application/json"
                     )
@@ -486,8 +486,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 searchView.query?.toString(),
                 sortAscending,
                 sort
-            ) {
-                share(it)
+            ) { file, name ->
+                share(file)
             }
 
             R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()

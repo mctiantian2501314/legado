@@ -16,18 +16,22 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.databinding.DialogMultipleEditTextBinding
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.Item1lineTextAndDelBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -39,7 +43,7 @@ import kotlinx.coroutines.launch
 /**
  * 辅助按键配置
  */
-class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
+class KeyboardAssistsConfig(private val callBack: CallBack) : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
@@ -51,14 +55,29 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
-        binding.toolBar.setTitle(R.string.assists_key_config)
         initView()
         initMenu()
         initData()
     }
 
     private fun initView() {
+        binding.toolBar.run {
+            setBackgroundColor(primaryColor)
+            setTitle(R.string.assists_key_config)
+            subtitle = AppConfig.showBoardLine.toLineStr(context)
+            setOnClickListener {
+                NumberPickerDialog(requireContext())
+                    .setTitle(getString(R.string.setting_show_line_number))
+                    .setMaxValue(5)
+                    .setMinValue(1)
+                    .setValue(AppConfig.showBoardLine)
+                    .show {
+                        putPrefInt(PreferKey.showBoardLine, it)
+                        subtitle = it.toLineStr(context)
+                        callBack.requestLayout()
+                    }
+            }
+        }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.addItemDecoration(VerticalDivider(requireContext()))
         binding.recyclerView.adapter = adapter
@@ -177,5 +196,13 @@ class KeyboardAssistsConfig : BaseDialogFragment(R.layout.dialog_recycler_view),
             }
             isMoved = false
         }
+    }
+    interface CallBack {
+         /**通知布局管理器重新布局*/
+        fun requestLayout()
+    }
+
+    private fun Int.toLineStr(context: Context): String {
+      return context.getString(R.string.show_line_number, this)
     }
 }

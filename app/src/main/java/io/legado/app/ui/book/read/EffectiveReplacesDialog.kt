@@ -13,9 +13,10 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.Item1lineTextBinding
+import io.legado.app.databinding.Item1lineTextAndCloseBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
@@ -82,13 +83,13 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view
     }
 
     private inner class ReplaceAdapter(context: Context) :
-        RecyclerAdapter<ReplaceRule, Item1lineTextBinding>(context) {
+        RecyclerAdapter<ReplaceRule, Item1lineTextAndCloseBinding>(context) {
 
-        override fun getViewBinding(parent: ViewGroup): Item1lineTextBinding {
-            return Item1lineTextBinding.inflate(inflater, parent, false)
+        override fun getViewBinding(parent: ViewGroup): Item1lineTextAndCloseBinding {
+            return Item1lineTextAndCloseBinding.inflate(inflater, parent, false)
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextBinding) {
+        override fun registerListener(holder: ItemViewHolder, binding: Item1lineTextAndCloseBinding) {
             binding.root.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { item ->
                     if (item == chineseConvert) {
@@ -98,11 +99,23 @@ class EffectiveReplacesDialog : BaseDialogFragment(R.layout.dialog_recycler_view
                     editActivity.launch(ReplaceEditActivity.startIntent(requireContext(), item.id))
                 }
             }
+            binding.icClose.setOnClickListener {
+                getItem(holder.layoutPosition)?.let { item ->
+                    isEdit = true
+                    removeItem(holder.layoutPosition)
+                    if (item == chineseConvert) {
+                        AppConfig.chineseConverterType = 0
+                        return@let
+                    }
+                    item.isEnabled = false
+                    appDb.replaceRuleDao.insert(item)
+                }
+            }
         }
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: Item1lineTextBinding,
+            binding: Item1lineTextAndCloseBinding,
             item: ReplaceRule,
             payloads: MutableList<Any>
         ) {

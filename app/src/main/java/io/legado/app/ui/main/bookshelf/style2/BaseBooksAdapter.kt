@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.bookshelf.style2
 
 import android.content.Context
+import android.os.Parcelable
 import android.view.LayoutInflater
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.AsyncListDiffer
@@ -8,13 +9,20 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.config.AppConfig
 
 abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
     val context: Context,
     val callBack: CallBack
 ) : RecyclerView.Adapter<VH>() {
-
+    private var layoutState: Parcelable? = null
+    private var layoutManager: RecyclerView.LayoutManager? = null
     protected val inflater: LayoutInflater = LayoutInflater.from(context)
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        layoutManager = recyclerView.layoutManager
+    }
 
     private val diffItemCallback = object : DiffUtil.ItemCallback<Any>() {
 
@@ -48,7 +56,9 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
 
                 oldItem is BookGroup && newItem is BookGroup -> {
                     oldItem.groupName == newItem.groupName &&
-                            oldItem.cover == newItem.cover
+                            oldItem.cover == newItem.cover &&
+                            oldItem.enableRefresh == newItem.enableRefresh &&
+                            oldItem.onlyUpdateRead == newItem.onlyUpdateRead
                 }
 
                 else -> false
@@ -77,7 +87,6 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                     if (oldItem.lastCheckCount != newItem.lastCheckCount
                         || oldItem.durChapterTime != newItem.durChapterTime
                         || oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum()
-                        || oldItem.lastCheckCount != newItem.lastCheckCount
                     ) {
                         bundle.putBoolean("refresh", true)
                     }
@@ -90,6 +99,9 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                     if (oldItem.cover != newItem.cover) {
                         bundle.putString("cover", newItem.cover)
                     }
+                    if (oldItem.enableRefresh != newItem.enableRefresh || oldItem.onlyUpdateRead != newItem.onlyUpdateRead) {
+                        bundle.putBoolean("unviewable", true)
+                    }
                 }
             }
             if (bundle.isEmpty) return null
@@ -98,10 +110,16 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
     }
 
     private val asyncListDiffer by lazy {
-        AsyncListDiffer(this, diffItemCallback)
+        AsyncListDiffer(this, diffItemCallback).apply {
+            addListListener { _, _ ->
+                layoutManager?.onRestoreInstanceState(layoutState)
+                layoutState = null
+            }
+        }
     }
 
     fun updateItems() {
+        layoutState = layoutManager?.onSaveInstanceState()
         asyncListDiffer.submitList(callBack.getItems())
     }
 

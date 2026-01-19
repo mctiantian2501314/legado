@@ -20,10 +20,10 @@ import io.legado.app.model.analyzeRule.RuleData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.coroutineContext
 
 @Suppress("MemberVisibilityCanBePrivate")
 object WebBook {
@@ -64,7 +64,7 @@ object WebBook {
             baseUrl = bookSource.bookSourceUrl,
             source = bookSource,
             ruleData = ruleData,
-            coroutineContext = coroutineContext
+            coroutineContext = currentCoroutineContext()
         )
         var res = analyzeUrl.getStrResponseAwait()
         //检测书源是否已登录
@@ -114,7 +114,7 @@ object WebBook {
             baseUrl = bookSource.bookSourceUrl,
             source = bookSource,
             ruleData = ruleData,
-            coroutineContext = coroutineContext
+            coroutineContext = currentCoroutineContext()
         )
         var res = analyzeUrl.getStrResponseAwait()
         //检测书源是否已登录
@@ -171,7 +171,7 @@ object WebBook {
                 baseUrl = bookSource.bookSourceUrl,
                 source = bookSource,
                 ruleData = book,
-                coroutineContext = coroutineContext
+                coroutineContext = currentCoroutineContext()
             )
             var res = analyzeUrl.getStrResponseAwait()
             //检测书源是否已登录
@@ -201,23 +201,24 @@ object WebBook {
         bookSource: BookSource,
         book: Book,
         runPerJs: Boolean = false,
-        context: CoroutineContext = Dispatchers.IO
+        context: CoroutineContext = Dispatchers.IO,
+        isFromBookInfo : Boolean = false
     ): Coroutine<List<BookChapter>> {
         return Coroutine.async(scope, context) {
-            getChapterListAwait(bookSource, book, runPerJs).getOrThrow()
+            getChapterListAwait(bookSource, book, runPerJs,isFromBookInfo).getOrThrow()
         }
     }
 
-    suspend fun runPreUpdateJs(bookSource: BookSource, book: Book): Result<Unit> {
+    suspend fun runPreUpdateJs(bookSource: BookSource, book: Book, isFromBookInfo : Boolean = false): Result<Unit> {
         return kotlin.runCatching {
             val preUpdateJs = bookSource.ruleToc?.preUpdateJs
             if (!preUpdateJs.isNullOrBlank()) {
-                AnalyzeRule(book, bookSource, true)
-                    .setCoroutineContext(coroutineContext)
+                AnalyzeRule(book, bookSource, true, isFromBookInfo)
+                    .setCoroutineContext(currentCoroutineContext())
                     .evalJS(preUpdateJs)
             }
         }.onFailure {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             AppLog.put("执行preUpdateJs规则失败 书源:${bookSource.bookSourceName}", it)
         }
     }
@@ -225,13 +226,14 @@ object WebBook {
     suspend fun getChapterListAwait(
         bookSource: BookSource,
         book: Book,
-        runPerJs: Boolean = false
+        runPerJs: Boolean = false,
+        isFromBookInfo : Boolean = false
     ): Result<List<BookChapter>> {
         book.removeAllBookType()
         book.addType(bookSource.getBookType())
         return kotlin.runCatching {
             if (runPerJs) {
-                runPreUpdateJs(bookSource, book).getOrThrow()
+                runPreUpdateJs(bookSource, book, isFromBookInfo).getOrThrow()
             }
             if (book.bookUrl == book.tocUrl && !book.tocHtml.isNullOrEmpty()) {
                 BookChapterList.analyzeChapterList(
@@ -239,7 +241,8 @@ object WebBook {
                     book = book,
                     baseUrl = book.tocUrl,
                     redirectUrl = book.tocUrl,
-                    body = book.tocHtml
+                    body = book.tocHtml,
+                    isFromBookInfo = isFromBookInfo
                 )
             } else {
                 val analyzeUrl = AnalyzeUrl(
@@ -247,7 +250,7 @@ object WebBook {
                     baseUrl = book.bookUrl,
                     source = bookSource,
                     ruleData = book,
-                    coroutineContext = coroutineContext
+                    coroutineContext = currentCoroutineContext()
                 )
                 var res = analyzeUrl.getStrResponseAwait()
                 //检测书源是否已登录
@@ -262,11 +265,12 @@ object WebBook {
                     book = book,
                     baseUrl = book.tocUrl,
                     redirectUrl = res.url,
-                    body = res.body
+                    body = res.body,
+                    isFromBookInfo = isFromBookInfo
                 )
             }
         }.onFailure {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
         }
     }
 
@@ -329,7 +333,7 @@ object WebBook {
                 source = bookSource,
                 ruleData = book,
                 chapter = bookChapter,
-                coroutineContext = coroutineContext
+                coroutineContext = currentCoroutineContext()
             )
             var res = analyzeUrl.getStrResponseAwait(
                 jsStr = bookSource.getContentRule().webJs,
@@ -384,18 +388,18 @@ object WebBook {
         author: String,
     ): Result<Book> {
         return kotlin.runCatching {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             searchBookAwait(
                 bookSource, name,
                 filter = { fName, fAuthor -> fName == name && fAuthor == author },
                 shouldBreak = { it > 0 }
             ).firstOrNull()?.let { searchBook ->
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 return@runCatching searchBook.toBook()
             }
             throw NoStackTraceException("未搜索到 $name($author) 书籍")
         }.onFailure {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
         }
     }
 

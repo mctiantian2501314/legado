@@ -1,7 +1,9 @@
 package io.legado.app.ui.widget.keyboard
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -9,6 +11,8 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.widget.PopupWindow
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -17,6 +21,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.PopupKeyboardToolBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.activity
@@ -40,7 +45,8 @@ class KeyboardToolPop(
     private val rootView: View,
     private val callBack: CallBack
 ) : PopupWindow(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-    ViewTreeObserver.OnGlobalLayoutListener {
+    ViewTreeObserver.OnGlobalLayoutListener,
+    KeyboardAssistsConfig.CallBack {
 
     private val helpChar = "❓"
 
@@ -90,13 +96,34 @@ class KeyboardToolPop(
         }
     }
 
+    @SuppressLint("SetTextI18n")
     private fun initRecyclerView() {
+        (binding.recyclerView.layoutManager as GridLayoutManager).spanCount = AppConfig.showBoardLine
         binding.recyclerView.adapter = adapter
         adapter.addHeaderView {
             ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
                 textView.text = helpChar
                 root.setOnClickListener {
                     helpAlert()
+                }
+            }
+        }
+        // 安卓6以上支持撤销重做
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            adapter.addHeaderView {
+                ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
+                    textView.text = "↩\uFE0F"
+                    root.setOnClickListener {
+                        callBack.onUndoClicked()
+                    }
+                }
+            }
+            adapter.addHeaderView {
+                ItemFilletTextBinding.inflate(context.layoutInflater, it, false).apply {
+                    textView.text = "↪\uFE0F"
+                    root.setOnClickListener {
+                        callBack.onRedoClicked()
+                    }
                 }
             }
         }
@@ -127,11 +154,28 @@ class KeyboardToolPop(
     }
 
     private fun config() {
-        contentView.activity?.showDialogFragment<KeyboardAssistsConfig>()
+        contentView.activity?.showDialogFragment(KeyboardAssistsConfig(this))
+    }
+
+    override fun requestLayout() {
+        (binding.recyclerView.layoutManager as GridLayoutManager).spanCount = AppConfig.showBoardLine
+        binding.recyclerView.layoutManager?.requestLayout()
     }
 
     inner class Adapter(context: Context) :
         RecyclerAdapter<KeyboardAssist, ItemFilletTextBinding>(context) {
+
+        private val itemClickListener = View.OnClickListener { view ->
+            val holder = view.tag as? ItemViewHolder
+            holder?.let {
+                val position = holder.layoutPosition
+                if (position != RecyclerView.NO_POSITION) {
+                    getItemByLayoutPosition(position)?.let { item ->
+                        callBack.sendText(item.value)
+                    }
+                }
+            }
+        }
 
         override fun getViewBinding(parent: ViewGroup): ItemFilletTextBinding {
             return ItemFilletTextBinding.inflate(inflater, parent, false)
@@ -149,13 +193,8 @@ class KeyboardToolPop(
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemFilletTextBinding) {
-            holder.itemView.apply {
-                setOnClickListener {
-                    getItemByLayoutPosition(holder.layoutPosition)?.let {
-                        callBack.sendText(it.value)
-                    }
-                }
-            }
+            holder.itemView.tag = holder
+            holder.itemView.setOnClickListener(itemClickListener)
         }
     }
 
@@ -167,6 +206,8 @@ class KeyboardToolPop(
 
         fun sendText(text: String)
 
+        fun onUndoClicked()
+        fun onRedoClicked()
     }
 
 }

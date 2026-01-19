@@ -51,6 +51,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.views.onLongClick
 import java.util.Locale
+import io.legado.app.ui.book.audio.config.AudioSkipCredits
+import com.dirror.lyricviewx.OnPlayClickListener
+import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
+import io.legado.app.ui.book.audio.SliderPopup.Companion.SPEED
+import io.legado.app.ui.book.audio.SliderPopup.Companion.TIMER
+import io.legado.app.ui.book.source.SourceCallBack
+import io.legado.app.utils.gone
 
 /**
  * 音频播放
@@ -63,9 +70,14 @@ class AudioPlayActivity :
 
     override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
     override val viewModel by viewModels<AudioPlayViewModel>()
-    private val timerSliderPopup by lazy { TimerSliderPopup(this) }
+    private val timerSliderPopup by lazy { SliderPopup(this, TIMER) }
+    private val speedControlPopup by lazy { SliderPopup(this, SPEED) }
     private var adjustProgress = false
     private var playMode = AudioPlay.PlayMode.LIST_END_STOP
+    private val lyricViewX by lazy { binding.lyricViewX }
+    private var lyricOn = false
+    private var oldLyric: String? = null
+    private var menuCustomBtn: MenuItem? = null
 
     private val progressTimeFormat by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -76,10 +88,10 @@ class AudioPlayActivity :
     }
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
-            if (it.first != AudioPlay.book?.durChapterIndex
-                || it.second == 0
+            if (it[0] != AudioPlay.book?.durChapterIndex
+                || it[1] == 0
             ) {
-                AudioPlay.skipTo(it.first)
+                AudioPlay.skipTo(it[0] as Int)
             }
         }
     }
@@ -93,18 +105,26 @@ class AudioPlayActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.setBackgroundResource(R.color.transparent)
         AudioPlay.register(this)
-        viewModel.titleData.observe(this) {
-            binding.titleBar.title = it
+        viewModel.titleData.observe(this) { name ->
+            binding.titleBar.title = name
+            val lyric = AudioPlay.durChapter?.getVariable("lyric")?.takeIf { it.isNotBlank() }
+            upLyric(lyric ?: AudioPlay.durLyric)
         }
         viewModel.coverData.observe(this) {
             upCover(it)
         }
-        viewModel.initData(intent)
+        viewModel.customBtnListData.observe(this) { menuCustomBtn?.isVisible = it }
+        viewModel.initData(intent) {
+            initListener()
+        }
         initView()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.audio_play, menu)
+        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)?.also {
+            it.isVisible = viewModel.customBtnListData.value == true
+        }
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -116,23 +136,40 @@ class AudioPlayActivity :
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_custom_btn -> {
+                AudioPlay.bookSource?.let {source ->
+                    AudioPlay.book?.let { book ->
+                        SourceCallBack.callBackBtn(this,SourceCallBack.CLICK_CUSTOM_BUTTON, source, book, AudioPlay.durChapter)
+                    }
+                }
+            }
             R.id.menu_change_source -> AudioPlay.book?.let {
                 showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
             }
 
             R.id.menu_login -> AudioPlay.bookSource?.let {
                 startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", it.bookSourceUrl)
+                    putExtra("bookType", BookType.audio)
                 }
             }
 
             R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
-            R.id.menu_copy_audio_url -> sendToClip(AudioPlayService.url)
+            R.id.menu_copy_audio_url -> {
+                AudioPlay.book?.let {
+                    SourceCallBack.callBackBtn(this, SourceCallBack.CLICK_COPY_PLAY_URL, AudioPlay.bookSource, it, AudioPlay.durChapter) {
+                        sendToClip(AudioPlayService.url)
+                    }
+                }
+            }
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
                 sourceEditResult.launch {
                     putExtra("sourceUrl", it.bookSourceUrl)
                 }
+            }
+
+            /* 跳过片头片尾设定按钮 */
+            R.id.menu_skip_credits -> AudioPlay.book?.let {
+                showDialogFragment(AudioSkipCredits.newInstance(it))
             }
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
@@ -141,26 +178,9 @@ class AudioPlayActivity :
     }
 
     private fun initView() {
-        binding.ivPlayMode.setOnClickListener {
-            AudioPlay.changePlayMode()
-        }
-
         observeEventSticky<AudioPlay.PlayMode>(EventBus.PLAY_MODE_CHANGED) {
             playMode = it
             updatePlayModeIcon()
-        }
-
-        binding.fabPlayStop.setOnClickListener {
-            playButton()
-        }
-        binding.fabPlayStop.onLongClick {
-            AudioPlay.stop()
-        }
-        binding.ivSkipNext.setOnClickListener {
-            AudioPlay.next()
-        }
-        binding.ivSkipPrevious.setOnClickListener {
-            AudioPlay.prev()
         }
         binding.playerProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -176,25 +196,42 @@ class AudioPlayActivity :
                 AudioPlay.adjustProgress(seekBar.progress)
             }
         })
+        /* 低于安卓6不显示调速按钮 */
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            binding.ivSpeedControl.invisible()
+        }
+        
+        binding.ivSpeedControl.setOnClickListener {
+            speedControlPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
+        }
+
+        binding.ivTimer.setOnClickListener {
+            timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
+        }
+        binding.llPlayMenu.applyNavigationBarPadding()
+    }
+
+    private fun initListener() {
+        binding.ivPlayMode.setOnClickListener {
+            AudioPlay.changePlayMode()
+        }
+        binding.fabPlayStop.setOnClickListener {
+            playButton()
+        }
+        binding.fabPlayStop.onLongClick {
+            AudioPlay.stop()
+        }
+        binding.ivSkipNext.setOnClickListener {
+            AudioPlay.next()
+        }
+        binding.ivSkipPrevious.setOnClickListener {
+            AudioPlay.prev()
+        }
         binding.ivChapter.setOnClickListener {
             AudioPlay.book?.let {
                 tocActivityResult.launch(it.bookUrl)
             }
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            binding.ivFastRewind.invisible()
-            binding.ivFastForward.invisible()
-        }
-        binding.ivFastForward.setOnClickListener {
-            AudioPlay.adjustSpeed(0.1f)
-        }
-        binding.ivFastRewind.setOnClickListener {
-            AudioPlay.adjustSpeed(-0.1f)
-        }
-        binding.ivTimer.setOnClickListener {
-            timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
-        }
-        binding.llPlayMenu.applyNavigationBarPadding()
     }
 
     private fun updatePlayModeIcon() {
@@ -208,11 +245,52 @@ class AudioPlayActivity :
         }.into(binding.ivCover)
     }
 
-    private fun playButton() {
-        when (AudioPlay.status) {
-            Status.PLAY -> AudioPlay.pause(this)
-            Status.PAUSE -> AudioPlay.resume(this)
-            else -> AudioPlay.loadOrUpPlayUrl()
+    override fun upLyric(lyric: String?) {
+        if (oldLyric == lyric) return
+        oldLyric = lyric
+        if(lyric.isNullOrBlank()) {
+            binding.lyricViewX.gone()
+            return
+        }
+        lyricViewX.loadLyric(lyric)
+        binding.lyricViewX.visible()
+        if (lyricOn) {
+            upLyricP(AudioPlay.durChapterPos)
+        } else {
+            lyricOn = true
+            lyricViewX.apply {
+                setNormalTextSize(50F)
+                setCurrentTextSize(60F)
+                setTimelineTextColor(accentColor)
+                setDraggable(true, object : OnPlayClickListener {
+                    override fun onPlayClick(time: Long): Boolean {
+                        AudioPlay.adjustProgress(time.toInt())
+                        playButton(false)
+                        return true
+                    }
+                })
+            }
+            lyricViewX.postDelayed({
+                upLyricP(AudioPlay.durChapterPos)
+            }, 100)
+        }
+    }
+    override fun upLyricP(position: Int) {
+        lyricViewX.updateTime(position.toLong(),false)
+    }
+
+    private fun playButton(noLyr: Boolean = true) {
+        val status = AudioPlay.status
+        when (status) {
+            Status.PLAY if noLyr -> {
+                AudioPlay.pause(this)
+            }
+            Status.PAUSE -> {
+                AudioPlay.resume(this)
+            }
+            else -> {
+                AudioPlay.loadOrUpPlayUrl()
+            }
         }
     }
 
@@ -239,12 +317,12 @@ class AudioPlayActivity :
 
     override fun finish() {
         val book = AudioPlay.book ?: return super.finish()
-
         if (AudioPlay.inBookshelf) {
+            callBackBookEnd()
             return super.finish()
         }
-
         if (!AppConfig.showAddToShelfAlert) {
+            callBackBookEnd()
             viewModel.removeFromBookshelf { super.finish() }
         } else {
             alert(title = getString(R.string.add_to_bookshelf)) {
@@ -252,12 +330,20 @@ class AudioPlayActivity :
                 okButton {
                     AudioPlay.book?.removeType(BookType.notShelf)
                     AudioPlay.book?.save()
+                    SourceCallBack.callBackBook(SourceCallBack.ADD_BOOK_SHELF, AudioPlay.bookSource, AudioPlay.book)
                     AudioPlay.inBookshelf = true
                     setResult(RESULT_OK)
                 }
-                noButton { viewModel.removeFromBookshelf { super.finish() } }
+                noButton {
+                    callBackBookEnd()
+                    viewModel.removeFromBookshelf { super.finish() }
+                }
             }
         }
+    }
+
+    private fun callBackBookEnd() {
+        SourceCallBack.callBackBook(SourceCallBack.END_READ, AudioPlay.bookSource, AudioPlay.book, AudioPlay.durChapter)
     }
 
     override fun onDestroy() {
@@ -299,11 +385,14 @@ class AudioPlayActivity :
         }
         observeEventSticky<Int>(EventBus.AUDIO_BUFFER_PROGRESS) {
             binding.playerProgress.secondaryProgress = it
-
         }
         observeEventSticky<Float>(EventBus.AUDIO_SPEED) {
-            binding.tvSpeed.text = String.format(Locale.ROOT, "%.1fX", it)
-            binding.tvSpeed.visible()
+            if (it == 1f) {
+                binding.tvSpeed.invisible()
+            } else {
+                binding.tvSpeed.text = String.format(Locale.ROOT, "%.1fX", it)
+                binding.tvSpeed.visible()
+            }
         }
         observeEventSticky<Int>(EventBus.AUDIO_DS) {
             binding.tvTimer.text = "${it}m"
@@ -316,5 +405,4 @@ class AudioPlayActivity :
             binding.progressLoading.visible(loading)
         }
     }
-
 }

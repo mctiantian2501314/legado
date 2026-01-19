@@ -24,7 +24,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flow
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
-import kotlin.coroutines.coroutineContext
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isOnLineTxt
+import io.legado.app.help.book.isVideo
+import kotlinx.coroutines.currentCoroutineContext
 
 /**
  * 获取正文
@@ -59,28 +62,16 @@ object BookContent {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
-        analyzeRule.setCoroutineContext(coroutineContext)
+        analyzeRule.setCoroutineContext(currentCoroutineContext())
         analyzeRule.setChapter(bookChapter)
         analyzeRule.setNextChapterUrl(mNextChapterUrl)
-        coroutineContext.ensureActive()
-        val titleRule = contentRule.title
-        if (!titleRule.isNullOrBlank()) {
-            val title = analyzeRule.runCatching {
-                getString(titleRule)
-            }.onFailure {
-                Debug.log(bookSource.bookSourceUrl, "获取标题出错, ${it.localizedMessage}")
-            }.getOrNull()
-            if (!title.isNullOrBlank()) {
-                bookChapter.title = title
-                bookChapter.titleMD5 = null
-                appDb.bookChapterDao.update(bookChapter)
-            }
-        }
+        currentCoroutineContext().ensureActive()
         var contentData = analyzeContent(
             book, baseUrl, redirectUrl, body, contentRule, bookChapter, bookSource, mNextChapterUrl
         )
         contentList.add(contentData.first)
         if (contentData.second.size == 1) {
+            val webJs = contentRule.webJs
             var nextUrl = contentData.second[0]
             while (nextUrl.isNotEmpty() && !nextUrlList.contains(nextUrl)) {
                 if (!mNextChapterUrl.isNullOrEmpty()
@@ -88,14 +79,14 @@ object BookContent {
                     == NetworkUtils.getAbsoluteURL(redirectUrl, mNextChapterUrl)
                 ) break
                 nextUrlList.add(nextUrl)
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 val analyzeUrl = AnalyzeUrl(
                     mUrl = nextUrl,
                     source = bookSource,
                     ruleData = book,
-                    coroutineContext = coroutineContext
+                    coroutineContext = currentCoroutineContext()
                 )
-                val res = analyzeUrl.getStrResponseAwait() //控制并发访问
+                val res = analyzeUrl.getStrResponseAwait(jsStr = webJs) //控制并发访问
                 res.body?.let { nextBody ->
                     contentData = analyzeContent(
                         book, nextUrl, res.url, nextBody, contentRule,
@@ -120,7 +111,7 @@ object BookContent {
                     mUrl = urlStr,
                     source = bookSource,
                     ruleData = book,
-                    coroutineContext = coroutineContext
+                    coroutineContext = currentCoroutineContext()
                 )
                 val res = analyzeUrl.getStrResponseAwait() //控制并发访问
                 analyzeContent(
@@ -130,8 +121,46 @@ object BookContent {
                     printLog = false
                 ).first
             }.collect {
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 contentList.add(it)
+            }
+        }
+        val subContentRule = contentRule.subContent
+        if (!subContentRule.isNullOrBlank()) { //副内容
+            analyzeRule.getString(subContentRule).let { rawContent ->
+                runCatching {
+                    if (book.isOnLineTxt) {
+                        contentList.add(rawContent)
+                        return@let
+                    }
+                    val subContent = rawContent.trim().let {
+                        if (it.startsWith("http", true)) {
+                            AnalyzeUrl(
+                                mUrl = it,
+                                source = bookSource,
+                                ruleData = book,
+                                coroutineContext = currentCoroutineContext()
+                            ).getStrResponseAwait().body
+                        } else {
+                            it
+                        }
+                    }
+                    when {
+                        book.isAudio -> {
+                            bookChapter.putLyric(subContent)
+                            Debug.log(bookSource.bookSourceUrl, "┌获取副文歌词")
+                            Debug.log(bookSource.bookSourceUrl, "└\n$subContent")
+                        }
+
+                        book.isVideo -> {
+                            bookChapter.putDanmaku(subContent)
+                            Debug.log(bookSource.bookSourceUrl, "┌获取副文弹幕")
+                            Debug.log(bookSource.bookSourceUrl, "└\n$subContent")
+                        }
+                    }
+                }.onFailure { e ->
+                    Debug.log(bookSource.bookSourceUrl, "获取副文出错, ${e.localizedMessage}")
+                }
             }
         }
         var contentStr = contentList.joinToString("\n")
@@ -141,6 +170,30 @@ object BookContent {
             contentStr = contentStr.split(AppPattern.LFRegex).joinToString("\n") { it.trim() }
             contentStr = analyzeRule.getString(replaceRegex, contentStr)
             contentStr = contentStr.split(AppPattern.LFRegex).joinToString("\n") { "　　$it" }
+        }
+        val titleRule = contentRule.title //先正文再章节名称
+        if (!titleRule.isNullOrBlank()) {
+            var title = analyzeRule.runCatching {
+                getString(titleRule)
+            }.onFailure {
+                Debug.log(bookSource.bookSourceUrl, "获取标题出错, ${it.localizedMessage}")
+            }.getOrNull()
+            if (!title.isNullOrBlank()) {
+                val matchResult = AppPattern.imgRegex.find(title)
+                if (matchResult != null) {
+                    matchResult.groupValues[1]
+                    val (group1,group2) = matchResult.destructured
+                    title = if (group1 != "") {
+                        group1
+                    } else {
+                        bookChapter.title
+                    }
+                    bookChapter.imgUrl = group2
+                }
+                bookChapter.title = title
+                bookChapter.titleMD5 = null
+                appDb.bookChapterDao.update(bookChapter)
+            }
         }
         Debug.log(bookSource.bookSourceUrl, "┌获取章节名称")
         Debug.log(bookSource.bookSourceUrl, "└${bookChapter.title}")
@@ -170,16 +223,29 @@ object BookContent {
     ): Pair<String, List<String>> {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
-        analyzeRule.setCoroutineContext(coroutineContext)
+        analyzeRule.setCoroutineContext(currentCoroutineContext())
         val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.setNextChapterUrl(nextChapterUrl)
         val nextUrlList = arrayListOf<String>()
         analyzeRule.setChapter(chapter)
         //获取正文
         var content = analyzeRule.getString(contentRule.content, unescape = false)
-        content = HtmlFormatter.formatKeepImg(content, rUrl)
-        if (content.indexOf('&') > -1) {
-            content = StringEscapeUtils.unescapeHtml4(content)
+        if (!book.isAudio && !book.isVideo) { //音频和视频获取的是链接，不需要html格式化
+            val useHtmlMap = mutableMapOf<String, String>()
+            if (AppConfig.adaptSpecialStyle) {
+                content = AppPattern.useHtmlRegex.replace(content) { matchResult ->
+                    val placeholder = "{usehtml_${useHtmlMap.size}}"
+                    useHtmlMap[placeholder] = matchResult.value
+                    placeholder
+                }
+            }
+            content = HtmlFormatter.formatKeepImg(content, rUrl) //内置净化格式化
+            if (content.indexOf('&') > -1) {
+                content = StringEscapeUtils.unescapeHtml4(content)
+            }
+            useHtmlMap.forEach { (placeholder, originalContent) ->
+                content = content.replace(placeholder, originalContent)
+            }
         }
         //获取下一页链接
         if (getNextPageUrl) {

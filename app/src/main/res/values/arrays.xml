@@ -10,6 +10,21 @@
 		<item>Audio</item>
 		<item>Image</item>
 		<item>File</item>
+		<item>Video</item>
+	</string-array>
+
+	<string-array name="layout_type">
+		<item>列表</item>
+		<item>单列</item>
+		<item>双列</item>
+		<item>瀑布</item>
+        <item>三列</item>
+	</string-array>
+
+	<string-array name="rss_type">
+		<item>网页</item>
+		<item>图片</item>
+		<item>视频</item>
 	</string-array>
 
 	<string-array name="group_style">
@@ -97,6 +112,7 @@
 		<item>icon4</item>
 		<item>icon5</item>
 		<item>icon6</item>
+        <item>icon7</item>
 	</string-array>
 
 	<string-array name="chinese_mode">
@@ -155,9 +171,8 @@
 
 	<string-array name="default_app_variant">
 		<item>@string/default_version</item>
-		<item>@string/official_version</item>
 		<item>@string/beta_release_version</item>
-		<item>@string/beta_releaseA_version</item>
+		<item>@string/beta_releaseS_version</item>
 	</string-array>
 
 	<string-array name="default_home_page_value">
@@ -169,9 +184,8 @@
 
 	<string-array name="default_app_variant_value">
 		<item>default_version</item>
-		<item>official_version</item>
 		<item>beta_release_version</item>
-		<item>beta_releaseA_version</item>
+		<item>beta_releaseS_version</item>
 	</string-array>
 
 	<string-array name="tip_color">

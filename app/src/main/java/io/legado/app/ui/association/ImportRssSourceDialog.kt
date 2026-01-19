@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.DialogInterface
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
@@ -28,6 +29,7 @@ import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.gone
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
@@ -143,17 +145,21 @@ class ImportRssSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_view
     private fun initMenu() {
         binding.toolBar.setOnMenuItemClickListener(this)
         binding.toolBar.inflateMenu(R.menu.import_source)
-        binding.toolBar.menu.findItem(R.id.menu_keep_original_name)?.isChecked =
-            AppConfig.importKeepName
-        binding.toolBar.menu.findItem(R.id.menu_keep_group)?.isChecked =
-            AppConfig.importKeepGroup
-        binding.toolBar.menu.findItem(R.id.menu_keep_enable)?.isChecked =
-            AppConfig.importKeepEnable
-        binding.toolBar.menu.findItem(R.id.menu_select_new_source)?.isVisible = false
-        binding.toolBar.menu.findItem(R.id.menu_select_update_source)?.isVisible = false
+        binding.toolBar.menu.apply {
+            findItem(R.id.menu_keep_original_name)
+                ?.isChecked = AppConfig.importKeepName
+            findItem(R.id.menu_keep_group)
+                ?.isChecked = AppConfig.importKeepGroup
+            findItem(R.id.menu_keep_enable)
+                ?.isChecked = AppConfig.importKeepEnable
+            findItem(R.id.menu_show_comment)
+                ?.isChecked = AppConfig.importShowComment
+            findItem(R.id.menu_select_new_source)?.isVisible = false // 暂不支持
+            findItem(R.id.menu_select_update_source)?.isVisible = false // 暂不支持
+        }
     }
 
-    @SuppressLint("InflateParams")
+    @SuppressLint("InflateParams", "NotifyDataSetChanged")
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_new_group -> alertCustomGroup(item)
@@ -170,6 +176,12 @@ class ImportRssSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_view
             R.id.menu_keep_enable -> {
                 item.isChecked = !item.isChecked
                 AppConfig.importKeepEnable = item.isChecked
+            }
+
+            R.id.menu_show_comment -> {
+                item.isChecked = !item.isChecked
+                AppConfig.importShowComment = item.isChecked
+                adapter.notifyDataSetChanged()
             }
         }
         return false
@@ -229,6 +241,23 @@ class ImportRssSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_view
             binding.apply {
                 cbSourceName.isChecked = viewModel.selectStatus[holder.layoutPosition]
                 cbSourceName.text = item.sourceName
+                if (AppConfig.importShowComment) {
+                    item.sourceComment?.takeIf{ it.isNotBlank() }?.let {
+                        showComment.text = it
+                        showComment.visible()
+                        showComment.setOnClickListener {
+                            if (showComment.maxLines == 3) {
+                                showComment.maxLines = 39
+                            } else {
+                                showComment.maxLines = 3
+                            }
+                        }
+                    } ?: run {
+                        showComment.gone()
+                    }
+                } else {
+                    showComment.gone()
+                }
                 val localSource = viewModel.checkSources[holder.layoutPosition]
                 tvSourceState.text = when {
                     localSource == null -> "新增"

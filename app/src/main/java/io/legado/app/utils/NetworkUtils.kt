@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import cn.hutool.core.lang.Validator
 import io.legado.app.constant.AppLog
+import io.legado.app.help.config.AppConfig
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 import splitties.systemservices.connectivityManager
 import java.net.InetAddress

@@ -111,7 +111,7 @@ data class TextChapter(
      * @return 已读长度
      */
     fun getReadLength(pageIndex: Int): Int {
-        if (pageIndex < 0) return 0
+        if (pageIndex < 0 || pages.isEmpty()) return 0
         return pages[min(pageIndex, lastIndex)].chapterPosition
         /*
         var length = 0
@@ -186,7 +186,7 @@ data class TextChapter(
         val stringBuilder = StringBuilder()
         if (pages.isNotEmpty()) {
             for (index in pageIndex..min(pageEndIndex, pages.lastIndex)) {
-                stringBuilder.append(pages[index].text)
+                stringBuilder.append(pages[index].text.replace(Regex("[袮꧁]"), " "))
                 if (pageSplit && !stringBuilder.endsWith("\n")) {
                     stringBuilder.append("\n")
                 }

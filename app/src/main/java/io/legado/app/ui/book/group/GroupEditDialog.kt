@@ -70,8 +70,12 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
             binding.btnDelete.visible(it.groupId > 0 || it.groupId == Long.MIN_VALUE)
             binding.tieGroupName.setText(it.groupName)
             binding.ivCover.load(it.cover)
+            if (it.bookSort + 1 !in 0..<binding.spSort.count) {
+                it.bookSort = -1
+            }
             binding.spSort.setSelection(it.bookSort + 1)
             binding.cbEnableRefresh.isChecked = it.enableRefresh
+            binding.cbEnableOnlyRead.isChecked = it.onlyUpdateRead
         } ?: let {
             binding.toolBar.title = getString(R.string.add_group)
             binding.btnDelete.gone()
@@ -92,11 +96,13 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
                     val bookSort = binding.spSort.selectedItemPosition - 1
                     val coverPath = binding.ivCover.bitmapPath
                     val enableRefresh = binding.cbEnableRefresh.isChecked
+                    val onlyUpdateRead = binding.cbEnableOnlyRead.isChecked
                     bookGroup?.let {
                         it.groupName = groupName
                         it.cover = coverPath
                         it.bookSort = bookSort
                         it.enableRefresh = enableRefresh
+                        it.onlyUpdateRead = onlyUpdateRead
                         viewModel.upGroup(it) {
                             dismiss()
                         }
@@ -105,6 +111,7 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
                             groupName,
                             bookSort,
                             enableRefresh,
+                            onlyUpdateRead,
                             coverPath
                         ) {
                             dismiss()

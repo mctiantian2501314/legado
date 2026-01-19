@@ -18,13 +18,14 @@
 > `{"example":"https://www.example.com/js/example.js", ...}` 自动复用已经下载的js文件
 
 > 注意此处定义的函数可能会被多个线程同时调用，在函数里的全局变量内容将会共享使用，对其进行修改可能会出现竞争问题
-> 函数内不可声明全局变量，函数外的全局变量不可再赋值，否则会抛出 `无法修改密封对象的属性` 异常
+> 函数内声明全局变量必须使用var
 
 * 并发率
 > 并发限制，单位ms，可填写两种格式
 
 > `1000` 访问间隔1s  
 > `20/60000` 60s内访问次数20  
+> `source.putConcurrent(str: String)` 更改并发率(书源的并发率规则不为空时才生效)
 
 * 书源类型: 文件
 > 对于类似知轩藏书提供文件整合下载的网站，可以在书源详情的下载URL规则获取文件链接
@@ -32,6 +33,9 @@
 > 通过截取下载链接或文件响应头头获取文件信息，获取失败会自动拼接`书名` `作者`和下载链接的`UrlOption`的`type`字段
 
 > 压缩文件解压缓存会在下次启动后自动清理，不会占用额外空间  
+
+* 书源类型: 音频
+> 将正文获得的字符串作为音频链接，返回序列化后的链接数组会将多个链接拼接成一条音频。
 
 * CookieJar
 > 启用后会自动保存每次返回头中的Set-Cookie中的值，适用于验证码图片一类需要session的网站
@@ -44,7 +48,8 @@
 [
     {
         "name": "telephone",
-        "type": "text"
+        "type": "text",
+        "default": "123"
     },
     {
         "name": "password",
@@ -66,11 +71,29 @@
             "layout_flexBasisPercent": -1,
             "layout_wrapBefore": false
         }
+    },
+    {
+        "name": "评论开关",
+        "type": "toggle",
+        "chars": ["❎", "☑️"],
+        "default": "☑️"
+    },
+    {
+        "name": "显示书名",
+        "viewName": "book?.name||'未获取到书名'",
+        "type": "button"
+    },
+    {
+        "name": "选择排序",
+        "type": "select",
+        "chars": ["月票", "人气"],
+        "default": "人气"
     }
 ]
 ```
 * 登录URL
-> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript
+> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript  
+变量`isLongClick`为true时表示为按钮长按点击
 ```
 示范填写
 function login() {
@@ -125,17 +148,11 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
 > 错误格式 user-agent referer
 ```
 socks5代理
-{
-  "proxy":"socks5://127.0.0.1:1080"
-}
+{ "proxy":"socks5://127.0.0.1:1080" }
 http代理
-{
-  "proxy":"http://127.0.0.1:1080"
-}
+{ "proxy":"http://127.0.0.1:1080" }
 支持http代理服务器验证
-{
-  "proxy":"http://127.0.0.1:1080@用户名@密码"
-}
+{ "proxy":"http://127.0.0.1:1080@用户名@密码" }
 注意:这些请求头是无意义的,会被忽略掉
 ```
 
@@ -143,6 +160,16 @@ http代理
 ```
 https://www.baidu.com,{"js":"java.headerMap.put('xxx', 'yyy')"}
 https://www.baidu.com,{"js":"java.url=java.url+'yyyy'"}
+```
+
+* url添加bodyJs参数,对访问结果进行二次js处理,例
+```
+https://www.baidu.com,{"bodyJs":"if(result)'这里的文本作为访问返回的响应体body'else result"}
+```
+
+* url添加dnsIp参数,解析url时执行,强制指定链接访问的ip地址,例
+```
+https://dns.google,{"dnsIp":"8.8.8.8"}
 ```
 
 * 增加js方法，用于重定向拦截
@@ -199,8 +226,40 @@ let options = {
 </js>
 ```
 
+* 副文规则
+> 书籍为文本时，获取的内容会拼接到正文后面。  
+> 书籍为音频时，获取的内容作为歌词显示。  
+> 书籍为视频时，获取的内容作为弹幕文本来加载。  
+
 * 购买操作
 > 可直接填写链接或者JavaScript，如果执行结果是网络链接将会自动打开浏览器,js返回true自动刷新目录和当前章节
+
+* 回调操作
+> 先启用事件监听按钮，然后软件触发事件时会执行回调规则的js代码。  
+字符串变量`event`的值对应事件名称，目前的事件有
+```js
+"clickBookName" //点击详情页书名
+"longClickBookName" //长按详情页书名
+"clickAuthor" //点击详情页作者
+"longClickAuthor" //长按详情页作者
+"clickCustomButton" //点击书源自定义按钮
+"longClickCustomButton" //长按书源自定义按钮（只存在小说的正文界面）
+"clickShareBook" //点击详情页分享按钮
+"clickClearCache" //点击详情页清理缓存按钮
+"clickCopyBookUrl" //点击详情页拷贝书籍URl按钮
+"clickCopyTocUrl" //点击详情页拷贝目录URl按钮
+"clickCopyPlayUrl" //音频、视频界面点击拷贝播放URL按钮
+//上面的事件回调执行结果返回true会消费事件，原本的软件操作不会再执行
+
+//下面的事件无法被回调结果消费
+"addBookShelf" //添加到书架
+"delBookShelf" //移除书架
+"saveRead" //保存阅读进度
+"startRead" //开始阅读
+"endRead" //结束阅读
+"startShelfRefresh" //开始书架刷新
+"endShelfRefresh" //结束书架刷新
+```
 
 * 图片解密
 > 适用于图片需要二次解密的情况，直接填写JavaScript，返回解密后的`ByteArray`  
@@ -242,4 +301,30 @@ function decodeImage(data, key) {
 }
 
 decodeImage(result, key)
+```
+
+* 网页JS
+> `window.close()` 关闭浏览器界面  
+> `screen.orientation.lock()` 全屏后可控制屏幕方向  
+
+> 本地html中的额外支持的js函数  
+
+> 异步执行阅读函数，并返回字符串结果
+```js
+window.run("java.toast('执行成功');'成功'")
+.then(r=>alert(r))
+.catch(e=>alert("执行出错:"+e));
+```
+
+* 书源控制正文图片
+> 图片链接中含有"js"键时，点击图片会执行一次键值的函数  
+> 加载图片时，执行结果作为图片链接  
+
+> "style"键值控制单个图片的样式  
+> 目前支持"text"、"full"、"single"、"left"、"right"  
+> "TEXT"且处于段尾时，占1.5个字符位  
+
+```js
+var url = `https://www.baidu.com/img/flexible/logo/pc/result.png,{"js": "if (book) java.toast('这是'+book.name+'正文的图被点击了');result", "style": "right"}`;
+result = `<img src = "${url}">`;
 ```

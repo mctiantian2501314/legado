@@ -2,6 +2,19 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <io.legado.app.lib.prefs.SeekBarPreference
+        android:clickable="false"
+        android:defaultValue="500"
+        android:key="welcomeShowTime"
+        android:summary="@string/welcome_show_time_summary"
+        android:title="@string/welcome_show_time"
+        app:MaxValue="800"
+        app:MinValue="0"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:selectable="false" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="customWelcome"
@@ -80,5 +93,6 @@
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
+
 
 </androidx.preference.PreferenceScreen>

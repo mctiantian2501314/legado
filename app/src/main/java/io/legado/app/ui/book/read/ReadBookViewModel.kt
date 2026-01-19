@@ -39,6 +39,7 @@ import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toStringArray
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
@@ -52,7 +53,6 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
-import kotlin.coroutines.coroutineContext
 
 /**
  * 阅读界面数据处理
@@ -93,6 +93,12 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             when {
                 book != null -> initBook(book)
                 else -> ReadBook.upMsg(context.getString(R.string.no_book))
+            }
+            val index = intent.getIntExtra("index", -1)
+            val chapterPos = intent.getIntExtra("chapterPos", -1)
+            if (index >= 0 && chapterPos >= 0) { //从书签打开的正文，有进度传递
+                ReadBook.saveCurrentBookProgress() //启用恢复进度提示
+                openChapter(index, chapterPos)
             }
         }.onSuccess {
             success?.invoke()
@@ -166,7 +172,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             WebBook.getBookInfoAwait(source, book, canReName = false)
             return true
         } catch (e: Throwable) {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             ReadBook.upMsg("详情页出错: ${e.localizedMessage}")
             return false
         }
@@ -222,7 +228,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                         ReadBook.onChapterListUpdated(book)
                         return true
                     }.onFailure {
-                        coroutineContext.ensureActive()
+                        currentCoroutineContext().ensureActive()
                         ReadBook.upMsg(context.getString(R.string.error_load_toc))
                         return false
                     }
@@ -420,13 +426,22 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         // calculate search result's pageIndex
         val pages = textChapter.pages
         val content = textChapter.getContent()
-        val queryLength = searchContentQuery.length
+        var queryLength = searchContentQuery.length
 
-        var count = 0
-        var index = content.indexOf(searchContentQuery)
-        while (count != searchResult.resultCountWithinChapter) {
-            index = content.indexOf(searchContentQuery, index + queryLength)
-            count += 1
+        var index: Int
+        if (searchResult.isRegex) {
+            val regex = Regex(searchContentQuery)
+            val matches = regex.findAll(content)
+            val match = matches.elementAtOrNull(searchResult.resultCountWithinChapter)
+            queryLength = match?.value?.length ?: 0
+            index = match?.range?.first ?: -1
+        } else {
+            var count = 0
+            index = content.indexOf(searchContentQuery)
+            while (count != searchResult.resultCountWithinChapter) {
+                index = content.indexOf(searchContentQuery, index + queryLength)
+                count += 1
+            }
         }
         val contentPosition = index
         var pageIndex = 0
@@ -469,7 +484,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             addLine = -1
             charIndex2 = charIndex + queryLength - curLineLength - 1
         }
-        return arrayOf(pageIndex, lineIndex, charIndex, addLine, charIndex2)
+        return arrayOf(pageIndex, lineIndex, charIndex, addLine, charIndex2, queryLength)
     }
 
     /**

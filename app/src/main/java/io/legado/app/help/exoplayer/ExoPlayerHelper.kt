@@ -4,7 +4,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -15,11 +18,15 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ConcatenatingMediaSource2
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.google.gson.reflect.TypeToken
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.GSON
 import io.legado.app.utils.externalCache
+import io.legado.app.utils.fromJsonArray
 import okhttp3.CacheControl
 import splitties.init.appCtx
 import java.io.File
@@ -38,7 +45,8 @@ object ExoPlayerHelper {
 
     fun createMediaItem(url: String, headers: Map<String, String>): MediaItem {
         val formatUrl = url + SPLIT_TAG + GSON.toJson(headers, mapType)
-        return MediaItem.Builder().setUri(formatUrl).build()
+        val mediaItemBuilder = MediaItem.Builder().setUri(formatUrl)
+        return mediaItemBuilder.build()
     }
 
     fun createHttpExoPlayer(context: Context): ExoPlayer {
@@ -49,13 +57,13 @@ object ExoPlayerHelper {
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS / 10,
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS / 10
             ).build()
-
         ).setMediaSourceFactory(
             DefaultMediaSourceFactory(context)
                 .setDataSourceFactory(resolvingDataSource)
                 .setLiveTargetOffsetMs(5000)
         ).build()
     }
+
 
 
 
@@ -84,7 +92,7 @@ object ExoPlayerHelper {
     /**
      * 支持缓存的DataSource.Factory
      */
-    private val cacheDataSourceFactory by lazy {
+    val cacheDataSourceFactory by lazy {
         //使用自定义的CacheDataSource以支持设置UA
         return@lazy CacheDataSource.Factory()
             .setCache(cache)
@@ -139,4 +147,17 @@ object ExoPlayerHelper {
 //        return this
 //    }
 
+
+    fun getMediaSource(context: Context, url: String): MediaSource? {
+        val uris = GSON.fromJsonArray<String>(url).getOrNull() ?: return null
+        val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(context)
+        val mediaSourceBuilder = ConcatenatingMediaSource2.Builder()
+        for (uri in uris) {
+            mediaSourceBuilder.add(
+                ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(uri)), 3000
+            )
+        }
+        return mediaSourceBuilder.build()
+    }
 }

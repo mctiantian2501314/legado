@@ -80,6 +80,8 @@ android {
             applicationIdSuffix '.release'
             if (getApplicationIdSuffix() == '.releaseA') {
                 manifestPlaceholders.put("app_name", "@string/app_name_a")
+            } else if (getApplicationIdSuffix() == '.releaseS') {
+                manifestPlaceholders.put("app_name", "@string/app_name_s")
             } else {
                 manifestPlaceholders.put("app_name", "@string/app_name")
             }
@@ -152,6 +154,9 @@ android {
             //options.compilerArgs << "-Xlint:unchecked"
         }
     }
+    lint { //忽略string翻译缺失，后面需要翻译时去掉，todo
+        disable 'MissingTranslation'
+    }
 }
 
 dependencies {
@@ -202,10 +207,18 @@ dependencies {
     implementation(libs.media.media)
     // For media playback using ExoPlayer
     implementation(libs.media3.exoplayer)
+    //implementation(libs.media3.exoplayer.hls)
+    //implementation(libs.media3.ui)
     // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)
     // For exposing and controlling media sessions
     //implementation "androidx.media3:media3-session:$media3_version"
+
+    //videoPlayer
+    implementation(libs.gsyVideoPlayer.java)
+    implementation(libs.gsyVideoPlayer.exo2)
+    //弹幕
+    implementation (libs.danmakuFlameMaster)
 
     //Splitties
     implementation(libs.splitties.appctx)
@@ -288,4 +301,10 @@ dependencies {
 
     //com.github.AmrDeveloper:CodeView代码编辑已集成到应用内
     //epubLib集成到应用内
+    // 椒盐歌词
+    implementation(libs.lyricViewx)
+    // sora-editor代码编辑器,更丰富的编辑功能
+    implementation(platform(libs.soraEditor.bom))
+    implementation(libs.soraEditor.core)
+    implementation(libs.soraEditor.language.textmate)
 }

@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,10 +18,11 @@ import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemRssReadRecordBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.rss.read.ReadRss
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class ReadRecordDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
+class ReadRecordDialog(private val origin: String? = null) : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
 
     private val viewModel by viewModels<RssSortViewModel>()
@@ -43,18 +45,23 @@ class ReadRecordDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
             recyclerView.adapter = adapter
         }
-        adapter.setItems(viewModel.getRecords())
+        adapter.setItems(viewModel.getRecords(origin))
+        adapter.setOnRecordClickListener(object : OnRecordClickListener {
+            override fun onRecordClick(record: RssReadRecord?) {
+                record?.let { ReadRss.readRss(activity as AppCompatActivity, it)}
+            }
+        })
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_clear -> {
                 alert(R.string.draw) {
-                    val countRead = viewModel.countRecords()
+                    val countRead = viewModel.countRecords(origin)
                     setMessage(getString(R.string.sure_del) + "\n" + countRead + " " + getString(R.string.read_record))
                     noButton()
                     yesButton {
-                        viewModel.deleteAllRecord()
+                        viewModel.deleteAllRecord(origin)
                         adapter.clearItems()
                     }
                 }
@@ -65,6 +72,11 @@ class ReadRecordDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     inner class ReadRecordAdapter(context: Context) :
         RecyclerAdapter<RssReadRecord, ItemRssReadRecordBinding>(context) {
+
+        private var recordClickListener: OnRecordClickListener? = null
+        fun setOnRecordClickListener(listener: OnRecordClickListener) {
+            this.recordClickListener = listener
+        }
 
         override fun getViewBinding(parent: ViewGroup): ItemRssReadRecordBinding {
             return ItemRssReadRecordBinding.inflate(inflater, parent, false)
@@ -81,8 +93,16 @@ class ReadRecordDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemRssReadRecordBinding) {
+            binding.textTitle.setOnClickListener {
+                recordClickListener?.onRecordClick(getItem(holder.bindingAdapterPosition))
+                dismiss()
+            }
         }
 
+    }
+
+    interface OnRecordClickListener {
+        fun onRecordClick(record: RssReadRecord?)
     }
 
 }

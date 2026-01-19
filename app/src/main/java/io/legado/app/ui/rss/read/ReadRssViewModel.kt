@@ -17,17 +17,19 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssStar
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.TTS
+import io.legado.app.help.WebJsExtensions.Companion.JS_INJECTION
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
+import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.ACache
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeBytes
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.util.Date
-import kotlin.coroutines.coroutineContext
 
 
 class ReadRssViewModel(application: Application) : BaseViewModel(application) {
@@ -36,47 +38,73 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
     var tts: TTS? = null
     val contentLiveData = MutableLiveData<String>()
     val urlLiveData = MutableLiveData<AnalyzeUrl>()
+    val htmlLiveData = MutableLiveData<String>()
     var rssStar: RssStar? = null
     val upTtsMenuData = MutableLiveData<Boolean>()
     val upStarMenuData = MutableLiveData<Boolean>()
     var headerMap: Map<String, String> = emptyMap()
+    var origin: String? = null
+    var cacheFirst = false
+    var hasPreloadJs = false
 
-    fun initData(intent: Intent) {
+    fun initData(intent: Intent, success: (() -> Unit)? = null) {
         execute {
-            val origin = intent.getStringExtra("origin") ?: return@execute
+            origin = intent.getStringExtra("origin") ?: return@execute
             val link = intent.getStringExtra("link")
-            rssSource = appDb.rssSourceDao.getByKey(origin)
+            rssSource = appDb.rssSourceDao.getByKey(origin!!)?.also{
+                cacheFirst = it.cacheFirst
+                hasPreloadJs = !it.preloadJs.isNullOrBlank()
+            }
             headerMap = runScriptWithContext {
                 rssSource?.getHeaderMap() ?: emptyMap()
             }
             if (link != null) {
-                rssStar = appDb.rssStarDao.get(origin, link)
-                rssArticle = rssStar?.toRssArticle() ?: appDb.rssArticleDao.get(origin, link)
-                val rssArticle = rssArticle ?: return@execute
-                if (!rssArticle.description.isNullOrBlank()) {
-                    contentLiveData.postValue(rssArticle.description!!)
-                } else {
-                    rssSource?.let {
-                        val ruleContent = it.ruleContent
-                        if (!ruleContent.isNullOrBlank()) {
-                            loadContent(rssArticle, ruleContent)
-                        } else {
-                            loadUrl(rssArticle.link, rssArticle.origin)
-                        }
-                    } ?: loadUrl(rssArticle.link, rssArticle.origin)
-                }
+                rssStar = appDb.rssStarDao.get(origin!!, link)
+                val sort = intent.getStringExtra("sort")
+                rssArticle = rssStar?.toRssArticle()
+                    ?: if (sort == null) {
+                        appDb.rssArticleDao.getByLink(origin!!, link)
+                    } else {
+                        appDb.rssArticleDao.get(origin!!, link, sort)
+                    }
+
+                rssArticle?.let { article ->
+                    if (!article.description.isNullOrBlank()) {
+                        contentLiveData.postValue(article.description!!)
+                    } else {
+                        rssSource?.let {
+                            val ruleContent = it.ruleContent
+                            if (!ruleContent.isNullOrBlank()) {
+                                loadContent(article, ruleContent)
+                            } else {
+                                loadUrl(article.link, article.origin)
+                            }
+                        } ?: loadUrl(article.link, article.origin)
+                    }
+                } ?: return@execute
             } else {
                 val ruleContent = rssSource?.ruleContent
-                if (ruleContent.isNullOrBlank()) {
-                    loadUrl(origin, origin)
-                } else {
-                    val rssArticle = RssArticle()
-                    rssArticle.origin = origin
-                    rssArticle.link = origin
-                    rssArticle.title = rssSource!!.sourceName
+                val startHtml = intent.getBooleanExtra("startHtml", false)
+                val openUrl = intent.getStringExtra("openUrl")
+                if (startHtml) {
+                    loadStartHtml()
+                }
+                else if (ruleContent.isNullOrBlank()) {
+                    loadUrl(openUrl ?: origin!!, origin!!)
+                }
+                else if (rssSource!!.singleUrl) {
+                    loadUrl(origin!!, origin!!)
+//                    htmlLiveData.postValue(ruleContent)
+                }
+                else if (openUrl != null) {
+                    val title = intent.getStringExtra("title") ?: rssSource!!.sourceName
+                    val rssArticle = appDb.rssArticleDao.getByLink(origin!!, openUrl) ?: RssArticle(
+                        origin!!, title, title, link = openUrl)
                     loadContent(rssArticle, ruleContent)
                 }
             }
+        }.onSuccess {
+            success?.invoke()
         }.onFinally {
             upStarMenuData.postValue(true)
         }
@@ -87,7 +115,7 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
             mUrl = url,
             baseUrl = baseUrl,
             source = rssSource,
-            coroutineContext = coroutineContext,
+            coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
         urlLiveData.postValue(analyzeUrl)
@@ -103,6 +131,7 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
                     it.description = body
                     appDb.rssStarDao.insert(it)
                 }
+                this@ReadRssViewModel.rssArticle = rssArticle
                 contentLiveData.postValue(body)
             }.onError {
                 contentLiveData.postValue("加载正文失败\n${it.stackTraceToString()}")
@@ -196,32 +225,55 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun clHtml(content: String): String {
-        return when {
-            !rssSource?.style.isNullOrEmpty() -> {
-                """
-                    <style>
-                        ${rssSource?.style}
-                    </style>
-                    $content
-                """.trimIndent()
+    fun clHtml(content: String, style: String? = rssSource?.style): String {
+        val preloadJs = rssSource?.preloadJs ?: ""
+        var processedHtml = content
+        processedHtml = if (processedHtml.contains("<head>")) {
+            processedHtml.replaceFirst("<head>", "<head><script>(() => {$JS_INJECTION$preloadJs\n})();</script>")
+        } else {
+            "<head><script>(() => {$JS_INJECTION$preloadJs\n})();</script></head>$processedHtml"
+        }
+        if (processedHtml.contains("<style>")) {
+            if (!style.isNullOrBlank()) {
+                processedHtml = processedHtml.replaceFirst("</style>", "</style><style>$style</style>")
             }
+        } else {
+            processedHtml = processedHtml.replaceFirst("</head>", "<style>${
+                style.takeIf { !it.isNullOrBlank() } ?:
+                "img{max-width:100% !important; width:auto; height:auto;}video{object-fit:fill; max-width:100% !important; width:auto; height:auto;}body{word-wrap:break-word; height:auto;max-width: 100%; width:auto;}"
+            }</style></head>")
+        }
+        return processedHtml
+    }
 
-            content.contains("<style>".toRegex()) -> {
-                content
+    private fun loadStartHtml() {
+        val source = rssSource
+        if (source == null) {
+            htmlLiveData.postValue("<body>rssSource is null</body>")
+            return
+        }
+        var processedHtml = source.startHtml?.let{ html  ->
+            try {
+                when {
+                    html.startsWith("@js:") -> source.evalJS( html.substring(4)).toString()
+                    html.startsWith("<js>") -> source.evalJS(html.substring(4, html.lastIndexOf("<"))).toString()
+                    else -> html
+                }
+            } catch (e: Throwable) {
+                e.printOnDebug()
+                html
             }
-
-            else -> {
-                """
-                    <style>
-                        img{max-width:100% !important; width:auto; height:auto;}
-                        video{object-fit:fill; max-width:100% !important; width:auto; height:auto;}
-                        body{word-wrap:break-word; height:auto;max-width: 100%; width:auto;}
-                    </style>
-                    $content
-                """.trimIndent()
+        } ?: return
+        val javascript = rssSource?.startJs
+        if (!javascript.isNullOrBlank()) {
+            processedHtml = if (processedHtml.contains("</body>")) {
+                processedHtml.replaceFirst("</body>", "<script>$javascript</script></body>")
+            } else {
+                "<body>$processedHtml<script>$javascript</script></body>"
             }
         }
+        processedHtml = clHtml(processedHtml, source.startStyle ?: source.style)
+        htmlLiveData.postValue(processedHtml)
     }
 
     @Synchronized

@@ -94,6 +94,12 @@ data class Book(
     // 当前章节索引
     @ColumnInfo(defaultValue = "0")
     var durChapterIndex: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    /**  当前卷索引  **/
+    var durVolumeIndex: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    /**  相对于卷的索引  **/
+    var chapterInVolumeIndex: Int = 0,
     // 当前阅读的进度(首行字符的索引位置)
     @ColumnInfo(defaultValue = "0")
     var durChapterPos: Int = 0,
@@ -223,7 +229,7 @@ data class Book(
 
     fun getPageAnim(): Int {
         var pageAnim = config.pageAnim
-            ?: if (type and BookType.image > 0) PageAnim.scrollPageAnim else ReadBookConfig.pageAnim
+            ?: if (isImage) PageAnim.scrollPageAnim else ReadBookConfig.pageAnim
         if (pageAnim < 0) {
             pageAnim = ReadBookConfig.pageAnim
         }
@@ -294,6 +300,41 @@ data class Book(
         return config.dailyChapters
     }
 
+    // 片头 的 setter 和 getter
+    fun setOpenCredits(openCredits: Int) {
+        config.openCredits = openCredits
+    }
+
+    fun getOpenCredits(): Int {
+        return config.openCredits
+    }
+    // 片尾 的 setter 和 getter
+    fun setCloseCredits(closeCredits: Int) {
+        config.closeCredits = closeCredits
+    }
+
+    fun getCloseCredits(): Int {
+        return config.closeCredits
+    }
+
+    // 播放模式 的 setter 和 getter
+    fun setPlayMode(playMode: Int) {
+        config.playMode = playMode
+    }
+
+    fun getPlayMode(): Int {
+        return config.playMode
+    }
+
+    // 播放速度 的 setter 和 getter
+    fun setPlaySpeed(playSpeed: Float) {
+        config.playSpeed = playSpeed
+    }
+
+    fun getPlaySpeed(): Float {
+        return config.playSpeed
+    }
+
     fun getDelTag(tag: Long): Boolean {
         return config.delTag and tag == tag
     }
@@ -339,13 +380,15 @@ data class Book(
      * 迁移旧的书籍的一些信息到新的书籍中
      */
     fun migrateTo(newBook: Book, toc: List<BookChapter>): Book {
-        newBook.durChapterIndex = BookHelp
-            .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
-        newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
-            ContentProcessor.get(newBook.name, newBook.origin).getTitleReplaceRules(),
-            getUseReplaceRule()
-        )
-        newBook.durChapterPos = durChapterPos
+        if (toc.isNotEmpty()) {
+            newBook.durChapterIndex = BookHelp
+                .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
+            newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
+                ContentProcessor.get(newBook.name, newBook.origin).getTitleReplaceRules(),
+                getUseReplaceRule()
+            )
+            newBook.durChapterPos = durChapterPos
+        }
         newBook.durChapterTime = durChapterTime
         newBook.group = group
         newBook.order = order
@@ -402,7 +445,11 @@ data class Book(
         var readSimulating: Boolean = false,
         var startDate: LocalDate? = null,
         var startChapter: Int? = null,     // 用户设置的起始章节
-        var dailyChapters: Int = 3    // 用户设置的每日更新章节数
+        var dailyChapters: Int = 3,    // 用户设置的每日更新章节数
+        var openCredits: Int = 0,       //音频片头
+        var closeCredits: Int = 0,       //音频片尾
+        var playMode: Int = 0,           //音频播放模式
+        var playSpeed: Float = 1.0f      //音频播放速度
     ) : Parcelable
 
     class Converters {
