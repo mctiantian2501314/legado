@@ -272,3 +272,5 @@ class App : Application() {
     }
 
 }
+
+private fun LogUtils.e(tag: String, msg: String, e: Exception) {}

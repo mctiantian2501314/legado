@@ -135,6 +135,8 @@ object LogUtils {
         }
     }
 
+    private fun e(tag: String, msg: String, e: Exception) {}
+
 }
 
 fun Throwable.printOnDebug() {
