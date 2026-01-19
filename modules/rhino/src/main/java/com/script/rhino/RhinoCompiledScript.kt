@@ -89,7 +89,49 @@ internal class RhinoCompiledScript(
     override suspend fun evalSuspend(scope: Scriptable): Any? {
         val cx = Context.enter() as RhinoContext
         var ret: Any?
-        withContext(VMBridgeReflect.contextLocal.asContextElement()) {
+        val context = cx.coroutineContext
+        if (context != null) {
+            withContext(context) {
+                cx.allowScriptRun = true
+                cx.recursiveCount++
+                try {
+                    cx.checkRecursive()
+                    try {
+                        ret = cx.executeScriptWithContinuations(script, scope)
+                    } catch (e: ContinuationPending) {
+                        var pending = e
+                        while (true) {
+                            try {
+                                @Suppress("UNCHECKED_CAST")
+                                val suspendFunction = pending.applicationState as suspend () -> Any?
+                                val functionResult = suspendFunction()
+                                val continuation = pending.continuation
+                                ret = cx.resumeContinuation(continuation, scope, functionResult)
+                                break
+                            } catch (e: ContinuationPending) {
+                                pending = e
+                            }
+                        }
+                    }
+                } catch (re: RhinoException) {
+                    val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
+                    val msg: String = if (re is JavaScriptException) {
+                        re.value.toString()
+                    } else {
+                        re.toString()
+                    }
+                    val se = ScriptException(msg, re.sourceName(), line)
+                    se.initCause(re)
+                    throw se
+                } catch (var14: IOException) {
+                    throw ScriptException(var14)
+                } finally {
+                    cx.allowScriptRun = false
+                    cx.recursiveCount--
+                    Context.exit()
+                }
+            }
+        } else {
             cx.allowScriptRun = true
             cx.recursiveCount++
             try {
