@@ -56,6 +56,8 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.help.webView.WebViewPool.BLANK_HTML
 import io.legado.app.help.webView.WebViewPool.DATA_HTML
 import java.lang.ref.WeakReference
+import io.legado.app.utils.NetworkUtils
+import io.legado.app.help.CacheManager
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
@@ -402,10 +404,30 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             }
             return false
         }
-        
+
     }
 
     inner class CustomWebViewClient : WebViewClient() {
+
+        // 新增的私有辅助方法，用于处理Uri
+        private fun shouldOverrideUrlLoading(url: Uri): Boolean {
+            return when (url.scheme) {
+                "http", "https" -> false
+                "legado", "yuedu" -> {
+                    startActivity<OnLineImportActivity> {
+                        data = url
+                    }
+                    true
+                }
+                else -> {
+                    binding.root.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
+                        openUrl(url)
+                    }
+                    true
+                }
+            }
+        }
+
         override fun shouldOverrideUrlLoading(
             view: WebView?,
             request: WebResourceRequest?
@@ -432,46 +454,34 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
         }
-        
+
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
             val cookieManager = CookieManager.getInstance()
             url?.let {
-                CookieStore.setCookie(it, cookieManager.getCookie(it))
+                val capturedCookies = cookieManager.getCookie(it) ?: ""
+                if (capturedCookies.isNotEmpty()) {
+                    val domain = NetworkUtils.getSubDomain(it)
+                    val sandboxKey = "cookie_sandbox_${domain}_${System.currentTimeMillis()}"
+                    CacheManager.putMemory(sandboxKey, capturedCookies)
+                }
             }
+
             view?.title?.let { title ->
                 if (title != url && title != view.url && title.isNotBlank()) {
                     binding.titleBar.title = title
                 } else {
                     binding.titleBar.title = intent.getStringExtra("title")
                 }
-                view.evaluateJavascript("!!window._cf_chl_opt") {
-                    if (it == "true") {
-                        isCloudflareChallenge = true
-                    } else if (isCloudflareChallenge && viewModel.sourceVerificationEnable) {
-                        viewModel.saveVerificationResult(currentWebView) {
-                            finish()
-                        }
-                    }
-                }
             }
-        }
 
-        private fun shouldOverrideUrlLoading(url: Uri): Boolean {
-            return when (url.scheme) {
-                "http", "https" -> false
-                "legado", "yuedu" -> {
-                    startActivity<OnLineImportActivity> {
-                        data = url
+            view?.evaluateJavascript("!!window._cf_chl_opt") {
+                if (it == "true") {
+                    isCloudflareChallenge = true
+                } else if (isCloudflareChallenge && viewModel.sourceVerificationEnable) {
+                    viewModel.saveVerificationResult(currentWebView) {
+                        finish()
                     }
-                    return true
-                }
-
-                else -> {
-                    binding.root.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
-                        openUrl(url)
-                    }
-                    true
                 }
             }
         }
@@ -484,7 +494,5 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         ) {
             handler?.proceed()
         }
-
     }
-
 }
