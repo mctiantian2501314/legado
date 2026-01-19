@@ -22,6 +22,7 @@ import android.widget.EdgeEffect
 import android.widget.EditText
 import android.widget.RadioGroup
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
@@ -46,6 +47,8 @@ import splitties.systemservices.inputMethodManager
 import splitties.views.bottomPadding
 import splitties.views.topPadding
 import java.lang.reflect.Field
+import androidx.core.graphics.createBitmap
+import androidx.core.view.isVisible
 
 
 private tailrec fun getCompatActivity(context: Context?): AppCompatActivity? {
@@ -149,7 +152,7 @@ fun View.visible() {
 fun View.visible(visible: Boolean) {
     if (visible && visibility != VISIBLE) {
         visibility = VISIBLE
-    } else if (!visible && visibility == VISIBLE) {
+    } else if (!visible && isVisible) {
         visibility = INVISIBLE
     }
 }
@@ -161,14 +164,13 @@ fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
             bitmap
         } else {
             bitmap?.recycle()
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            createBitmap(width, height)
         }
         val c = canvas ?: Canvas()
         c.setBitmap(screenshot)
-        c.save()
-        c.translate(-scrollX.toFloat(), -scrollY.toFloat())
-        this.draw(c)
-        c.restore()
+        c.withTranslation(-scrollX.toFloat(), -scrollY.toFloat()) {
+            this@screenshot.draw(this)
+        }
         c.setBitmap(null)
         screenshot.prepareToDraw()
         screenshot
@@ -226,17 +228,7 @@ fun RadioGroup.checkByIndex(index: Int) {
 }
 
 @SuppressLint("ObsoleteSdkInt")
-fun TextView.setHtml(html: String) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        text = Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT)
-    } else {
-        @Suppress("DEPRECATION")
-        text = Html.fromHtml(html)
-    }
-}
-
-@SuppressLint("ObsoleteSdkInt")
-fun TextView.setHtml(html: String, imageGetter: GlideImageGetter?) {
+fun TextView.setHtml(html: String, imageGetter: GlideImageGetter? = null) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         text = Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT, imageGetter, null)
     } else {
@@ -327,6 +319,13 @@ fun View.setOnApplyWindowInsetsListenerCompat(listener: (View, WindowInsetsCompa
             }
         }
         windowInsets
+    }
+}
+
+fun Spinner.setSelectionSafely(position: Int) {
+    val count = adapter?.count ?: 0
+    if (count > 0) {
+        setSelection(position.coerceIn(0, count - 1))
     }
 }
 

@@ -52,11 +52,11 @@ import java.net.URLDecoder
 import android.webkit.JavascriptInterface
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.AppLog
-import io.legado.app.help.WebJsExtensions
-import io.legado.app.help.WebJsExtensions.Companion.JSBridgeResult
-import io.legado.app.help.WebJsExtensions.Companion.basicJs
-import io.legado.app.help.WebJsExtensions.Companion.nameBasic
-import io.legado.app.help.WebJsExtensions.Companion.nameJava
+import io.legado.app.help.webView.WebJsExtensions
+import io.legado.app.help.webView.WebJsExtensions.Companion.JSBridgeResult
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameBasic
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
+import io.legado.app.help.webView.WebJsExtensions.Companion.basicJs
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
@@ -376,7 +376,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             }
             return false
         }
-        
+
     }
 
     inner class CustomWebViewClient : WebViewClient() {
@@ -402,12 +402,37 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onPageStarted(view, url, favicon)
             binding.webView.evaluateJavascript(basicJs, null)
         }
-        
+
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
             val cookieManager = CookieManager.getInstance()
+            val domain = viewModel.sourceOrigin.ifEmpty { viewModel.baseUrl }
             url?.let {
-                CookieStore.setCookie(it, cookieManager.getCookie(it))
+                try {
+                    // Log cookie retrieval start
+                    AppLog.putDebug("WebView onPageFinished: Retrieving cookie for URL: $it")
+                    
+                    val cookie = cookieManager.getCookie(it)
+                    
+                    if (cookie != null && cookie.isNotBlank()) {
+                        // Log successful cookie retrieval
+                        AppLog.putDebug("WebView onPageFinished: Cookie retrieved successfully for URL: $it")
+                        AppLog.putDebug("WebView onPageFinished: Cookie length: ${cookie.length}")
+                        
+                        // Update cookie with proper null handling
+                        CookieStore.replaceCookie(domain, cookie)
+                        
+                        // Log cookie update completion
+                        AppLog.putDebug("WebView onPageFinished: Cookie updated successfully for domain: $domain")
+                    } else {
+                        // Log cookie retrieval failure
+                        AppLog.putDebug("WebView onPageFinished: No cookie retrieved for URL: $it")
+                        // No action needed - just log the event
+                    }
+                } catch (e: Exception) {
+                    // Log and handle any exceptions
+                    AppLog.put("WebView onPageFinished: Error processing cookie for URL: $it\n$e", e)
+                }
             }
             view?.title?.let { title ->
                 if (title != url && title != view.url && title.isNotBlank()) {
@@ -416,12 +441,18 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                     binding.titleBar.title = intent.getStringExtra("title")
                 }
                 view.evaluateJavascript("!!window._cf_chl_opt") {
-                    if (it == "true") {
-                        isCloudflareChallenge = true
-                    } else if (isCloudflareChallenge && viewModel.sourceVerificationEnable) {
-                        viewModel.saveVerificationResult(binding.webView) {
-                            finish()
+                    try {
+                        if (it == "true") {
+                            isCloudflareChallenge = true
+                            AppLog.putDebug("WebView onPageFinished: Cloudflare challenge detected")
+                        } else if (isCloudflareChallenge && viewModel.sourceVerificationEnable) {
+                            AppLog.putDebug("WebView onPageFinished: Cloudflare challenge completed, saving verification result")
+                            viewModel.saveVerificationResult(binding.webView) {
+                                finish()
+                            }
                         }
+                    } catch (e: Exception) {
+                        AppLog.put("WebView onPageFinished: Error handling Cloudflare verification\n$e", e)
                     }
                 }
             }

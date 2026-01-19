@@ -141,6 +141,7 @@ object PreferKey {
     const val welcomeShowIcon = "welcomeShowIcon"
     const val welcomeShowIconDark = "welcomeShowIconDark"
     const val pageTouchSlop = "pageTouchSlop"
+    const val pageTouchClick = "pageTouchClick"
     const val showAddToShelfAlert = "showAddToShelfAlert"
     const val ignoreAudioFocus = "ignoreAudioFocus"
     const val parallelExportBook = "parallelExportBook"
@@ -177,6 +178,7 @@ object PreferKey {
     const val readAloudByMediaButton = "readAloudByMediaButton"
     const val showMangaUi = "showMangaUi"
     const val disableMangaScale = "disableMangaScale"
+    const val disableMangaPageAnim = "disableMangaPageAnim"
     const val paddingDisplayCutouts = "paddingDisplayCutouts"
     const val autoCheckNewBackup = "autoCheckNewBackup"
 
@@ -189,6 +191,7 @@ object PreferKey {
     const val cBBackground = "colorBottomBackground"
     const val bgImage = "backgroundImage"
     const val bgImageBlurring = "backgroundImageBlurring"
+    const val tNavBar = "transparentNavBar"
 
     const val cNPrimary = "colorPrimaryNight"
     const val cNAccent = "colorAccentNight"
@@ -196,6 +199,8 @@ object PreferKey {
     const val cNBBackground = "colorBottomBackgroundNight"
     const val bgImageN = "backgroundImageNight"
     const val bgImageNBlurring = "backgroundImageNightBlurring"
+    const val tNavBarN = "transparentNavBarNight"
+
     const val showReadTitleAddition = "showReadTitleAddition"
     const val readBarStyleFollowPage = "readBarStyleFollowPage"
     const val contentSelectSpeakMod = "contentReadAloudMod"

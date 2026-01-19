@@ -210,6 +210,7 @@
     <string name="click_turn_page">Tap screen to turn page</string>
     <string name="page_anim">Flip animation</string>
     <string name="book_page_anim">Flip animation (book)</string>
+    <string name="disable_manga_page_anim">Disable flip animation</string>
     <string name="keep_light">Keep screen awake</string>
     <string name="back">Back</string>
     <string name="menu">Menu</string>
@@ -1034,6 +1035,9 @@
     <string name="page_touch_slop_title">Sliding Page Threshold</string>
     <string name="page_touch_slop_dialog_title">Sliding page turn threshold (0 = system default)</string>
     <string name="page_touch_slop_summary">How far to slide to trigger a page slide (system default %s px)</string>
+    <string name="page_touch_click_title">边缘点击阈值</string>
+    <string name="page_touch_click_summary">左右边缘多少距离不会触发点击事件，默认为0px</string>
+    <string name="page_touch_click_dialog_title">边缘点击阈值</string>
     <string name="check_selected_interval">Select zones</string>
     <string name="show_add_to_shelf_alert_title">Prompt to add to bookshelf when return</string>
     <string name="show_add_to_shelf_alert_summary">Prompt to add to bookshelf when return from reading books that are not on the bookshelf</string>
@@ -1300,6 +1304,9 @@
     <string name="app_name_sigma">阅读Sigma</string>
     <string name="about_description_sigma">\u3000\u3000阅读Sigma继承自legado，旨在原版基础上完善和增加功能，欢迎您的加入。</string>
     <string name="contributors_summary_sigma">gedoor、Luoyacheng、Horis和 Xwite 等，详情请在 GitHub 中查看</string>
+    <string name="app_share_description_sigma">
+        阅读 Sigma 下载地址：\nhttps://github.com/Luoyacheng/legado/releases
+    </string>
     <string name="sure_cache_book">是否确认开始缓存？</string>
     <string name="non_printable_set">不可视字符设定</string>
     <string name="whitespace_leading">行首</string>
@@ -1308,7 +1315,8 @@
     <string name="whitespace_empty">空行</string>
     <string name="line_separator">换行</string>
     <string name="whitespace_selection">选中</string>
-    <string name="press_speed">长按倍速 %.1f</string>
+    <string name="press_speed">长按倍速</string>
+    <string name="press_speed_summary">长按倍速 %.1f</string>
     <string name="full_bottom_progress">全屏时显示底部进度条</string>
     <string name="json_format">json格式</string>
     <string name="open_other_video_player">其它播放器打开</string>
@@ -1324,4 +1332,13 @@
     <string name="cache_first">优先加载缓存</string>
     <string name="rule_sub_content">副文规则（subContent）</string>
     <string name="system_auto">跟随系统</string>
+    <string name="sys_image_picker">系统图片选择器</string>
+    <string name="immersion_nav_bar">沉浸式操作栏</string>
+    <string name="day_nav_bar_immersion">白天操作栏颜色透明</string>
+    <string name="night_nav_bar_immersion">夜间操作栏颜色透明</string>
+    <string name="manual_input_img_src">手动输入图片链接</string>
+    <string name="enter_img_src_path">请输入图片链接</string>
+    <string name="empty_img_src_input">图片链接不能为空</string>
+    <string name="invalid_file_path">文件路径无效</string>
+    <string name="is_system_tts_no_export">无法导出系统tts</string>
 </resources>

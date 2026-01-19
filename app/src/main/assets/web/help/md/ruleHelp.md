@@ -42,8 +42,10 @@
 
 * 登录UI
 > 不使用内置webView登录网站，需要使用`登录URL`规则实现登录逻辑，可使用`登录检查JS`检查登录结果  
-> 版本20221113重要更改：按钮支持调用`登录URL`规则里面的函数，必须实现`login`函数
+> 版本20221113重要更改：按钮支持调用`登录URL`规则里面的函数，必须实现`login`函数  
+> 版本20251224：文本输入类型支持`action`键，在用户完成输入后执行js函数，可用来判断用户输入内容，返回true会执行保存
 ```
+//所有按钮类型："text"、"password"、"button"、"toggle"、"select"
 规则填写示范
 [
     {
@@ -53,7 +55,8 @@
     },
     {
         "name": "password",
-        "type": "password"
+        "type": "password",
+        "action": "checkPassword()"
     },
     {
         "name": "注册",
@@ -85,9 +88,15 @@
     },
     {
         "name": "选择排序",
+        "viewName": "'排序按钮别名'",
         "type": "select",
         "chars": ["月票", "人气"],
-        "default": "人气"
+        "default": "人气",
+        "style": {
+            "layout_flexGrow": 0,
+            "layout_flexBasisPercent": -1,
+            "layout_justifySelf": "flex_end"
+        }
     }
 ]
 ```
@@ -126,7 +135,21 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
 ```
 
 * 发现url格式
-```json
+> 对比登录ui，name换成了title，url用来打开发现页面，其余相同  
+> 额外的变量[infoMap](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/utils/InfoMap.kt)可读取按钮的切换值
+```js
+//读取值
+var input = infoMap["关键词"];
+//修改值
+infoMap["关键词"]="系统";
+//替换infoMap
+infoMap.set({"键":"值"});
+//保存infoMap
+infoMap.save();
+```
+```
+//所有按钮类型："url"、"text"、"button"、"toggle"、"select"
+规则填写示范
 [
   {
     "title": "xxx",
@@ -138,6 +161,10 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
       "layout_flexBasisPercent": -1,
       "layout_wrapBefore": false
     }
+  },
+  {
+    "title": "关键词",
+    "type": "text"
   }
 ]
 ```
@@ -147,7 +174,7 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
 > 正确格式 User-Agent Referer  
 > 错误格式 user-agent referer
 ```
-socks5代理
+socks5代理    不支持需要验证的socks5代理
 { "proxy":"socks5://127.0.0.1:1080" }
 http代理
 { "proxy":"http://127.0.0.1:1080" }
@@ -322,7 +349,7 @@ window.run("java.toast('执行成功');'成功'")
 
 > "style"键值控制单个图片的样式  
 > 目前支持"text"、"full"、"single"、"left"、"right"  
-> "TEXT"且处于段尾时，占1.5个字符位  
+> 大写"TEXT"时，占1.5个字符位  
 
 ```js
 var url = `https://www.baidu.com/img/flexible/logo/pc/result.png,{"js": "if (book) java.toast('这是'+book.name+'正文的图被点击了');result", "style": "right"}`;

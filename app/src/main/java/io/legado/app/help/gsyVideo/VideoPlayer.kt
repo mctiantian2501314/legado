@@ -1,5 +1,6 @@
 package io.legado.app.help.gsyVideo
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.AttributeSet
 import android.view.GestureDetector
@@ -8,8 +9,11 @@ import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.widget.ImageView
 import android.widget.TextView
+import com.shuyu.gsyvideoplayer.listener.LockClickListener
+import com.shuyu.gsyvideoplayer.utils.CommonUtil
 import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYVideoPlayer
 import io.legado.app.R
@@ -53,6 +57,34 @@ class VideoPlayer: StandardGSYVideoPlayer {
         else R.layout.video_layout_controller
     }
 
+    override fun getFullWindowPlayer(): VideoPlayer? {
+        val activity = CommonUtil.scanForActivity(context) ?: return null
+        val vp = activity.findViewById<View?>(Window.ID_ANDROID_CONTENT) as ViewGroup
+        val full = vp.findViewById<View?>(fullId)
+        var gsyVideoPlayer: VideoPlayer? = null
+        if (full != null) {
+            gsyVideoPlayer = full as VideoPlayer
+        }
+        return gsyVideoPlayer
+    }
+    override fun getSmallWindowPlayer(): VideoPlayer? = null
+
+    override fun getCurrentPlayer(): VideoPlayer {
+        val fullVideoPlayer = getFullWindowPlayer()
+        if (fullVideoPlayer != null) {
+            return fullVideoPlayer
+        }
+        val smallVideoPlayer = getSmallWindowPlayer()
+        if (smallVideoPlayer != null) {
+            return smallVideoPlayer
+        }
+        return this
+    }
+
+    fun getLockCurScreen() = mLockCurScreen
+
+    public override fun lockTouchLogic() = super.lockTouchLogic()
+
     override fun init(context: Context) {
         super.init(context)
         initView()
@@ -84,6 +116,9 @@ class VideoPlayer: StandardGSYVideoPlayer {
                     }
                 }
             )
+            mLockClickListener = LockClickListener { view, lock ->
+                VideoPlay.lockCurScreen = lock
+            }
         }
     }
     override fun touchSurfaceUp(){
@@ -145,6 +180,11 @@ class VideoPlayer: StandardGSYVideoPlayer {
         } else if (mCurrentState == CURRENT_STATE_PAUSE) {
             danmakuOnPause()
         }
+    }
+
+    override fun onAutoCompletion() { //播放完成
+        super.onAutoCompletion()
+        VideoPlay.upDurIndex(1, this)
     }
 
     override fun onCompletion() {
@@ -213,10 +253,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
             }
         }
         btnNext?.setOnClickListener {
-            if (VideoPlay.upDurIndex(1)) {
-                VideoPlay.saveRead()
-                VideoPlay.startPlay(this)
-            }
+            VideoPlay.upDurIndex(1,this)
         }
     }
 
@@ -346,15 +383,14 @@ class VideoPlayer: StandardGSYVideoPlayer {
             ChoiceEpisodeDialog.OnListItemClickListener {
             override fun onItemClick(position: Int) {
                 VideoPlay.chapterInVolumeIndex = position
-                VideoPlay.durChapterPos = 0
-                VideoPlay.saveRead()
+                VideoPlay.saveRead(0)
                 VideoPlay.startPlay(this@VideoPlayer)
             }
 
             override fun finishDialog() {
                 isChanging = false
             }
-        })
+        }, VideoPlay.chapterInVolumeIndex)
         choiceEpisodeDialog.show()
     }
 
@@ -366,12 +402,15 @@ class VideoPlayer: StandardGSYVideoPlayer {
         val choiceSpeedDialog = ChoiceSpeedDialog(mContext)
         choiceSpeedDialog.initList(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f).reversed(), object :
             ChoiceSpeedDialog.OnListItemClickListener {
+            @SuppressLint("SetTextI18n")
             override fun onItemClick(value: Float) {
                 playSpeed = value
                 setSpeed(playSpeed, true)
                 if (playSpeed != 1.0f) {
                     playbackSpeed?.text = "${playSpeed}X"
                     showOverlayTip("${playSpeed}倍播放中", 2000)
+                } else {
+                    playbackSpeed?.text = "倍速"
                 }
             }
 
@@ -405,7 +444,6 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     override fun onError(what: Int, extra: Int) {
         super.onError(what, extra)
-        VideoPlay.durChapterPos = VideoPlay.videoManager.getCurrentPosition().toInt()
         VideoPlay.saveRead()
         mSeekOnStart = VideoPlay.durChapterPos.toLong()
     }
@@ -449,6 +487,11 @@ class VideoPlayer: StandardGSYVideoPlayer {
                 releaseDanmaku(videoPlayer)
             }
         }
+    }
+
+    override fun release() {
+        super.release()
+        releaseDanmaku(this)
     }
 
     /**********以下重载GSYVideoPlayer的GSYVideoViewBridge相关实现***********/

@@ -7,6 +7,7 @@ import android.os.Environment
 import android.webkit.MimeTypeMap
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -18,6 +19,7 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
+import io.legado.app.utils.SelectImageContract
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getJsonArray
@@ -59,6 +61,12 @@ class HandleFileActivity :
         } ?: finish()
     }
 
+    private val selectImage = registerForActivityResult(SelectImageContract()) {
+        it.uri?.let { uri ->
+            onResult(Intent().setData(uri))
+        } ?: finish()
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         mode = intent.getIntExtra("mode", 0)
         viewModel.errorLiveData.observe(this) {
@@ -76,6 +84,7 @@ class HandleFileActivity :
                 addAll(getDirActions())
             }
 
+            HandleFileContract.IMAGE -> getImageActions()
             else -> arrayListOf()
         }
         intent.getJsonArray<SelectItem<Int>>("otherActions")?.let {
@@ -85,6 +94,7 @@ class HandleFileActivity :
             when (mode) {
                 HandleFileContract.EXPORT -> return@let getString(R.string.export)
                 HandleFileContract.DIR -> return@let getString(R.string.select_folder)
+                HandleFileContract.IMAGE -> return@let getString(R.string.select_image)
                 else -> return@let getString(R.string.select_file)
             }
         }
@@ -116,6 +126,10 @@ class HandleFileActivity :
                         }
                     }
 
+                    HandleFileContract.IMAGE -> {
+                        selectImage.launch()
+                    }
+
                     10 -> checkPermissions {
                         @Suppress("DEPRECATION")
                         lifecycleScope.launchWhenResumed {
@@ -139,7 +153,7 @@ class HandleFileActivity :
 
                     111 -> getFileData()?.let {
                         viewModel.upload(it.first, it.second, it.third) { url ->
-                            val uri = Uri.parse(url)
+                            val uri = url.toUri()
                             setResult(RESULT_OK, Intent().setData(uri))
                             finish()
                         }
@@ -149,10 +163,14 @@ class HandleFileActivity :
                         showInputDirectoryDialog()
                     }
 
+                    113 -> checkPermissions { // 手动输入图片链接
+                        showInputImgSrcDialog()
+                    }
+
                     else -> {
                         val path = item.title
                         val uri = if (path.isContentScheme()) {
-                            Uri.parse(path)
+                            path.toUri()
                         } else {
                             Uri.fromFile(File(path))
                         }
@@ -188,6 +206,41 @@ class HandleFileActivity :
                     onResult(Intent().setData(Uri.fromFile(file)))
                 } else {
                     toastOnUi(getString(R.string.invalid_directory))
+                }
+            }
+            onDismiss {
+                finish()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showInputImgSrcDialog() {
+        val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.enter_img_src_path)
+        }
+
+        alert(getString(R.string.manual_input)) {
+            customView { alertBinding.root }
+            okButton {
+                val inputPath = alertBinding.editView.text.toString()
+                if (inputPath.isBlank()) {
+                    toastOnUi(getString(R.string.empty_img_src_input))
+                    return@okButton
+                }
+                if (inputPath.startsWith("http", true)) {
+                    onResult(Intent().setData(inputPath.toUri()))
+                    return@okButton
+                }
+                val file = File(inputPath)
+                if (file.exists() &&
+                    file.isFile &&
+                    isExternalStorage(file) &&
+                    file.canRead()
+                ) {
+                    onResult(Intent().setData(Uri.fromFile(file)))
+                } else {
+                    toastOnUi(getString(R.string.invalid_file_path))
                 }
             }
             onDismiss {
@@ -248,6 +301,15 @@ class HandleFileActivity :
             SelectItem(getString(R.string.sys_file_picker), HandleFileContract.FILE),
             SelectItem(getString(R.string.app_file_picker), 11)
         )
+    }
+
+    private fun getImageActions(): ArrayList<SelectItem<Int>> {
+        return arrayListOf(
+            SelectItem(getString(R.string.sys_image_picker), HandleFileContract.IMAGE)
+        ).apply {
+            addAll(getFileActions())
+            add(SelectItem(getString(R.string.manual_input_img_src), 113)) //手动输入图片链接
+        }
     }
 
     private fun checkPermissions(success: (() -> Unit)? = null) {

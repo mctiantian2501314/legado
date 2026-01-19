@@ -12,8 +12,8 @@ import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.NetworkUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.coroutineContext
 
 @Suppress("MemberVisibilityCanBePrivate")
 object Rss {
@@ -46,10 +46,34 @@ object Rss {
             key = key,
             source = rssSource,
             ruleData = ruleData,
-            coroutineContext = coroutineContext,
+            coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
-        val res = analyzeUrl.getStrResponseAwait()
+        val checkJs = rssSource.loginCheckJs
+        val res = kotlin.runCatching {
+            analyzeUrl.getStrResponseAwait().let {
+                if (!checkJs.isNullOrBlank()) { //检测源是否已登录
+                    analyzeUrl.evalJS(checkJs, it) as StrResponse
+                } else {
+                    it
+                }
+            }
+        }.getOrElse { throwable ->
+            if (!checkJs.isNullOrBlank()) {
+                val errResponse = analyzeUrl.getErrStrResponse(throwable)
+                try {
+                    (analyzeUrl.evalJS(checkJs, errResponse) as StrResponse).also {
+                        if (it.code() == 500) {
+                            throw throwable
+                        }
+                    }
+                } catch (_: Throwable) {
+                    throw throwable
+                }
+            } else {
+                throw throwable
+            }
+        }
         checkRedirect(rssSource, res)
         return RssParserByRule.parseXML(sortName, sortUrl, res.url, res.body, rssSource, ruleData)
     }
@@ -76,17 +100,41 @@ object Rss {
             baseUrl = rssArticle.origin,
             source = rssSource,
             ruleData = rssArticle,
-            coroutineContext = coroutineContext,
+            coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
-        val res = analyzeUrl.getStrResponseAwait()
+        val checkJs = rssSource.loginCheckJs
+        val res = kotlin.runCatching {
+            analyzeUrl.getStrResponseAwait().let {
+                if (!checkJs.isNullOrBlank()) { //检测源是否已登录
+                    analyzeUrl.evalJS(checkJs, it) as StrResponse
+                } else {
+                    it
+                }
+            }
+        }.getOrElse { throwable ->
+            if (!checkJs.isNullOrBlank()) {
+                val errResponse = analyzeUrl.getErrStrResponse(throwable)
+                try {
+                    (analyzeUrl.evalJS(checkJs, errResponse) as StrResponse).also {
+                        if (it.code() == 500) {
+                            throw throwable
+                        }
+                    }
+                } catch (_: Throwable) {
+                    throw throwable
+                }
+            } else {
+                throw throwable
+            }
+        }
         checkRedirect(rssSource, res)
         Debug.log(rssSource.sourceUrl, "≡获取成功:${rssSource.sourceUrl}")
         Debug.log(rssSource.sourceUrl, res.body ?: "", state = 20)
         val analyzeRule = AnalyzeRule(rssArticle, rssSource)
         analyzeRule.setContent(res.body)
             .setBaseUrl(NetworkUtils.getAbsoluteURL(rssArticle.origin, rssArticle.link))
-            .setCoroutineContext(coroutineContext)
+            .setCoroutineContext(currentCoroutineContext())
             .setRedirectUrl(res.url)
         return analyzeRule.getString(ruleContent)
     }

@@ -58,25 +58,29 @@ java.addBook(bookUrl: String)
 
 * 打开源界面  
 ```js
-* @param name 为"sort"打开订阅源分类界面、为"rss"打开订阅源正文界面、为"explore"打开书源发现界面、"search"打开书籍搜索界面
-* @param url 为传递到界面的链接，"sort"时为分类链接、"rss"时为正文链接、"explore"时为发现链接、"search"时该参数无意义
+* @param name 为"sort"打开订阅源分类界面、为"rss"打开订阅源正文界面、为"explore"打开书源发现界面、"search"打开书籍搜索界面、"login"打开源登录界面
+* @param url 为传递到界面的链接，"sort"时为分类链接、"rss"时为正文链接、"explore"时为发现链接，"search"、"login"时该参数无意义
 //特别说明，"sort"时url可以传序列化后的键值对用来打开多个分类界面
-* @param title 为对应界面的标题，"search"时为搜索关键词
+* @param title 为对应界面的标题，"search"时为搜索关键词，"login"时该参数无意义
 * @param origin 打开指定源界面的源地址
-java.open(name: String, url: String)
-java.open(name: String, url: String?, title: String?)
-java.open(name: String, url: String?, title: String?, origin: String?)
+java.open(name: String, url: String? = null, title: String? = null, origin: String? = null)
 ```
 
 ### [SourceLoginJsExtensions](https://github.com/Luoyacheng/legado/blob/main/app/src/main/java/io/legado/app/ui/login/SourceLoginJsExtensions.kt)独有函数
-> 只在`登录界面按钮`被触发时或`按钮的回调`事件中有效  
+> 只在`登录界面按钮`被触发、`按钮的回调`事件、`发现按钮`函数中有效  
 ```js
 //复制文本到剪贴板
 java.copyText(text: String)
 //实时更新登录界面用户信息，upLoginData(null)会全部重置为默认值
 java.upLoginData(data: Map<String, String?>?)
+//刷新登录界面
+java.reLoginView()
 //刷新书籍详情页
 java.refreshBookInfo()
+//清除tts源的缓存，仅限tts源的登录界面
+java.clearTtsCache()
+//刷新发现，仅限发现按钮
+java.refreshExplore()
 ```
 
 ### [AnalyzeUrl](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
@@ -139,24 +143,25 @@ java.getWebViewUA(): String
 ```
 * 网络请求
 ```js
-java.ajax(urlStr): String
-java.ajax(urlStr, callTimeout): String
-java.ajaxAll(urlList: Array<String>): Array<StrResponse>
-java.ajaxTestAll(urlList: Array<String>, timeout: Int): Array<StrResponse> //仅支持get连接
-//仅ajaxTestAll支持callTime()获取响应时间，对应的错误码值（-1超过设定时间，-2超时，-3域名错误，-4连接被拒绝，-5连接被重置，-6SSL证书错误，-7其它错误）
-//返回StrResponse 方法body() code() message() headers() raw() toString() 
-java.connect(urlStr): StrResponse
-java.connect(urlStr, header): StrResponse
-java.connect(urlStr, header, callTimeout): StrResponse
+//带有默认值的参数可不填
 
-java.post(url: String, body: String, headerMap: Map<String, String>): Connection.Response
-java.post(url: String, body: String, headerMap: Map<String, String>, timeout: Int?): Connection.Response
+java.ajax(urlStr, callTimeout: Int? = null): String
 
-java.get(url: String, headerMap: Map<String, String>): Connection.Response
-java.get(url: String, headerMap: Map<String, String>, timeout: Int?): Connection.Response
+* 并发访问网络
+* @param skipRateLimit 为true时不受源并发率限制
+java.ajaxAll(urlList: Array<String>, skipRateLimit: Boolean = false): Array<StrResponse>
 
-java.head(url: String, headerMap: Map<String, String>): Connection.Response
-java.head(url: String, headerMap: Map<String, String>, timeout: Int?): Connection.Response
+//ajaxTestAll会忽略网络访问错误，错误类型由callTime()获取，对应的错误码值（-1超过设定时间，-2超时，-3域名错误，-4连接被拒绝，-5连接被重置，-6SSL证书错误，-7其它错误），无错误时callTime()为响应时间
+java.ajaxTestAll(urlList: Array<String>, timeout: Int, skipRateLimit: Boolean = false): Array<StrResponse>
+
+java.connect(urlStr, header = null, callTimeout: Int? = null): StrResponse
+//返回的StrResponse对象具有的方法 body() code() message() headers() raw() toString() callTime()
+
+java.post(url: String, body: String, headerMap: Map<String, String>, timeout: Int? = null): Connection.Response
+
+java.get(url: String, headerMap: Map<String, String>, timeout: Int? = null): Connection.Response
+
+java.head(url: String, headerMap: Map<String, String>, timeout: Int? = null): Connection.Response
 
 * 使用webView访问网络
 * @param html 直接用webView载入的html, 如果html为空直接访问url
@@ -164,32 +169,23 @@ java.head(url: String, headerMap: Map<String, String>, timeout: Int?): Connectio
 * @param js 用来取返回值的js语句, 没有就返回整个源代码
 * @param cacheFirst 优先使用缓存,为true能提高访问速度
 * @return 返回js获取的内容
-java.webView(html: String?, url: String?, js: String?): String?
-java.webView(html: String?, url: String?, js: String?, cacheFirst: Boolean): String?
+java.webView(html: String?, url: String?, js: String?, cacheFirst: Boolean = false): String?
 
 * 使用webView获取跳转url
-java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String): String?
-java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String, cacheFirst: Boolean): String?
+java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String, cacheFirst: Boolean = false): String?
 
 * 使用webView获取资源url
-java.webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: String): String?
-java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String, cacheFirst: Boolean): String?
+java.webViewGetOverrideUrl(html: String?, url: String?, js: String?, overrideUrlRegex: String, cacheFirst: Boolean = false): String?
 
 * 使用内置浏览器打开链接，可用于获取验证码 手动验证网站防爬
 * @param url 要打开的链接
 * @param title 浏览器的标题
 * @param html 本地html代码
-java.startBrowser(url: String, title: String)
-
-java.startBrowser(url: String, title: String, html: String?)
+java.startBrowser(url: String, title: String, html: String? = null)
 
 * 使用内置浏览器打开链接，并等待网页结果 .body()获取网页内容
 * @param refetchAfterSuccess 为false时获取最终展示界面的源码
-java.startBrowserAwait(url: String, title: String): StrResponse
-
-java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean): StrResponse
-
-java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean, html: String?): StrResponse
+java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean = false, html: String? = null): StrResponse
 ```
 * 调试
 ```js
@@ -213,7 +209,7 @@ java.getReadBookConfigMap(): Map<String, Any>
 * 获取用户主题配置
 ```js
 java.getThemeConfig(): String
-java.getThemeConfigMap(): Map<String, Any>
+java.getThemeConfigMap(): Map<String, Any?>
 ```
 * 获取用户主题模式
 ```js
@@ -532,6 +528,8 @@ cookie.setWebCookie(url,cookie)
 cache.put(key: String, value: String, saveTime: Int)
 读取数据库
 cache.get(key: String): String?
+读取数据库,onlyDisk为true时只从磁盘读取
+cache.get(key: String, onlyDisk: Boolean): String?
 删除
 cache.delete(key: String)
 缓存文件内容

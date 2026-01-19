@@ -40,7 +40,6 @@ import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.coroutine.Coroutine
@@ -50,6 +49,7 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.BookCover
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
@@ -108,7 +108,7 @@ class App : Application() {
             BookHelp.clearInvalidCache()
             Backup.clearCache()
             ReadBookConfig.clearBgAndCache()
-            ThemeConfig.clearBg()
+//            ThemeConfig.clearBg() //每次手动切换主题时清理多余图片
             //初始化简繁转换引擎
             when (AppConfig.chineseConverterType) {
                 1 -> {

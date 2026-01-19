@@ -154,6 +154,11 @@ object CookieManager {
         this@getString.forEachIndexed { index, cookie ->
             if (index > 0) append("; ")
             append(cookie.name).append('=').append(cookie.value)
+            if (cookie.secure) append("; Secure")
+            if (cookie.httpOnly) append("; HttpOnly")
+            cookie.sameSite?.let { append("; SameSite=$it") }
+            if (cookie.path.isNotBlank()) append("; Path=${cookie.path}")
+            if (cookie.domain.isNotBlank()) append("; Domain=${cookie.domain}")
         }
     }
 

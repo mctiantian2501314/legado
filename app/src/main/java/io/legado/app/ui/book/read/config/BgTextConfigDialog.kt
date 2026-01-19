@@ -9,8 +9,11 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.SeekBar
 import androidx.appcompat.widget.TooltipCompat
+import androidx.core.graphics.toColorInt
 import androidx.core.view.isGone
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
@@ -40,7 +43,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.SelectImageContract
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFileReplace
@@ -51,7 +53,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.inputStream
-import io.legado.app.utils.launch
 import io.legado.app.utils.longToast
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
@@ -66,7 +67,12 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
-import androidx.core.graphics.toColorInt
+import androidx.lifecycle.lifecycleScope
+import io.legado.app.help.http.addHeaders
+import io.legado.app.help.http.newCallResponse
+import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.utils.setSelectionSafely
+import kotlinx.coroutines.launch
 
 class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
 
@@ -82,7 +88,7 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
     private var primaryTextColor = 0
     private var secondaryTextColor = 0
     private val importFormNet = "网络导入"
-    private val selectBgImage = registerForActivityResult(SelectImageContract()) {
+    private val selectBgImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             setBgFromUri(uri)
         }
@@ -94,7 +100,7 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
     }
     private val selectImportDoc = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            if (uri.toString() == importFormNet) {
+            if (uri.path == "/$importFormNet") {
                 importNetConfigAlert()
             } else {
                 importConfig(uri)
@@ -140,13 +146,44 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         ivEdit.setColorFilter(secondaryTextColor, PorterDuff.Mode.SRC_IN)
         tvRestore.setTextColor(primaryTextColor)
         swDarkStatusIcon.setTextColor(primaryTextColor)
-        swUnderline.setTextColor(primaryTextColor)
         ivImport.setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
         ivExport.setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
         ivDelete.setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
         tvBgAlpha.setTextColor(primaryTextColor)
         tvBgImage.setTextColor(primaryTextColor)
-        swUnderline.isGone = ReadBook.book?.isImage == true
+        if (ReadBook.book?.isImage == true) {
+            spUnderline.isGone = true
+        } else {
+            val textStyles = arrayOf("关闭", "实线", "虚线")
+            val adapter = object : ArrayAdapter<String>(requireContext(), R.layout.item_text_common, textStyles) {
+                override fun getDropDownView(
+                    position: Int,
+                    convertView: View?,
+                    parent: ViewGroup
+                ): View {
+                    val view = super.getDropDownView(position, convertView, parent)
+                    if (view is android.widget.TextView) {
+                        view.setBackgroundColor(bg) // 设置下拉列表项的背景色
+                        view.setTextColor(primaryTextColor) // 设置下拉列表项的文本颜色
+                    }
+                    return view
+                }
+            }
+            adapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
+            spUnderline.adapter = adapter
+            spUnderline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                var isInitializing = true
+                override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
+                    if (isInitializing) { //忽略初始化选择
+                        isInitializing = false
+                        return
+                    }
+                    ReadBookConfig.durConfig.underlineMode = position
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(6, 9, 11))
+                }
+                override fun onNothingSelected(parent: AdapterView<*>) { }
+            }
+        }
         recyclerView.adapter = adapter
         adapter.addHeaderView {
             ItemBgImageBinding.inflate(layoutInflater, it, false).apply {
@@ -155,7 +192,9 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
                 ivBg.setImageResource(R.drawable.ic_image)
                 ivBg.setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
                 root.setOnClickListener {
-                    selectBgImage.launch()
+                    selectBgImage.launch {
+                        mode = HandleFileContract.IMAGE
+                    }
                 }
             }
         }
@@ -168,7 +207,7 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
     private fun initData() = with(ReadBookConfig.durConfig) {
         binding.tvName.text = name.ifBlank { "文字" }
         binding.swDarkStatusIcon.isChecked = curStatusIconDark()
-        binding.swUnderline.isChecked = underline
+        binding.spUnderline.setSelectionSafely(underlineMode)
         binding.sbBgAlpha.progress = bgAlpha
     }
 
@@ -204,10 +243,6 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         binding.swDarkStatusIcon.setOnCheckedChangeListener { _, isChecked ->
             setCurStatusIconDark(isChecked)
             (activity as? ReadBookActivity)?.upSystemUiVisibility()
-        }
-        binding.swUnderline.setOnCheckedChangeListener { _, isChecked ->
-            underline = isChecked
-            postEvent(EventBus.UP_CONFIG, arrayListOf(6, 9, 11))
         }
         binding.tvTextColor.setOnClickListener {
             ColorPickerDialog.newBuilder()
@@ -388,12 +423,56 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
     }
 
     private fun setBgFromUri(uri: Uri) {
+        if (uri.scheme?.lowercase() in listOf("http", "https")) {
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    appCtx.toastOnUi("下载图片中...")
+                    val analyzeUrl = AnalyzeUrl(uri.toString())
+                    val url = analyzeUrl.urlNoQuery
+                    var file = requireContext().externalFiles
+                    val res = okHttpClient.newCallResponse(0) {
+                        addHeaders(analyzeUrl.headerMap)
+                        url(url)
+                    }
+                    val contentType = res.header("Content-Type") ?: "image/jpeg"
+                    val imageType = when {
+                        contentType.contains("png", ignoreCase = true) -> "png"
+                        contentType.contains("gif", ignoreCase = true) -> "gif"
+                        contentType.contains("webp", ignoreCase = true) -> "webp"
+                        else -> "jpg"
+                    }
+                    val suffix = if (url.contains(".9.png", true)) {
+                        ".9.png"
+                    } else {
+                        ".$imageType"
+                    }
+                    val fileName = MD5Utils.md5Encode(url) + suffix
+                    file = FileUtils.createFileIfNotExist(file, "bg", fileName)
+                    res.body.byteStream().use { inputStream ->
+                        FileOutputStream(file).use { outputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    ReadBookConfig.durConfig.setCurBg(2, fileName)
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(1))
+                }.onSuccess {
+                    appCtx.toastOnUi("设定成功")
+                }.onFailure {
+                    appCtx.toastOnUi(it.localizedMessage)
+                }
+            }
+            return
+        }
         readUri(uri) { fileDoc, inputStream ->
             kotlin.runCatching {
                 var file = requireContext().externalFiles
-                val suffix = fileDoc.name.substringAfterLast(".")
+                val suffix = if (fileDoc.name.contains(".9.png", true)) {
+                    ".9.png"
+                } else {
+                    "." + fileDoc.name.substringAfterLast(".")
+                }
                 val fileName = uri.inputStream(requireContext()).getOrThrow().use {
-                    MD5Utils.md5Encode(it) + ".$suffix"
+                    MD5Utils.md5Encode(it) + suffix
                 }
                 file = FileUtils.createFileIfNotExist(file, "bg", fileName)
                 FileOutputStream(file).use { outputStream ->

@@ -7,10 +7,10 @@ plugins {
 
 android {
     compileSdk = compile_sdk_version
-    namespace 'com.script'
+    namespace = 'com.script'
     kotlin {
         jvmToolchain {
-            languageVersion.set(JavaLanguageVersion.of(17))
+            languageVersion.set(JavaLanguageVersion.of(21))
         }
     }
     defaultConfig {
@@ -21,11 +21,14 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        // Flag to enable support for the new language APIs
+        coreLibraryDesugaringEnabled = true
+        // Sets Java compatibility
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
     lint {
-        checkDependencies true
+        checkDependencies = true
     }
     tasks.withType(JavaCompile).tap {
         configureEach {
@@ -35,7 +38,7 @@ android {
 }
 
 dependencies {
-//    api(fileTree(dir: 'lib', include: ['rhino-1.7.14.jar']))
+    coreLibraryDesugaring(libs.desugar)
     api libs.mozilla.rhino
 
     implementation(libs.kotlinx.coroutines.core)

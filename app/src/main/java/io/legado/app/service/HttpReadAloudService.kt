@@ -335,11 +335,32 @@ class HttpReadAloudService : BaseReadAloudService(),
                     readTimeout = 300 * 1000L,
                     coroutineContext = currentCoroutineContext()
                 )
-                var response = analyzeUrl.getResponseAwait()
-                currentCoroutineContext().ensureActive()
                 val checkJs = httpTts.loginCheckJs
-                if (checkJs?.isNotBlank() == true) {
-                    response = analyzeUrl.evalJS(checkJs, response) as Response
+                val response = kotlin.runCatching {
+                    analyzeUrl.getResponseAwait().let {
+                        currentCoroutineContext().ensureActive()
+                        if (!checkJs.isNullOrBlank()) {
+                            analyzeUrl.evalJS(checkJs, it) as Response
+                        } else {
+                            it
+                        }
+                    }
+                }.getOrElse { throwable ->
+                    currentCoroutineContext().ensureActive()
+                    if (!checkJs.isNullOrBlank()) {
+                        val errResponse = analyzeUrl.getErrResponse(throwable)
+                        try {
+                            (analyzeUrl.evalJS(checkJs, errResponse) as Response).also {
+                                if (it.code == 500) {
+                                    throw throwable
+                                }
+                            }
+                        } catch (_: Throwable) {
+                            throw throwable
+                        }
+                    } else {
+                        throw throwable
+                    }
                 }
                 response.headers["Content-Type"]?.let { contentType ->
                     val contentType = contentType.substringBefore(";")

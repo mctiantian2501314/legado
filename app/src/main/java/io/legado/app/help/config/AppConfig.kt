@@ -616,6 +616,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.pageTouchSlop, value)
         }
 
+    var pageTouchClick: Int
+        get() = appCtx.getPrefInt(PreferKey.pageTouchClick, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.pageTouchClick, value)
+        }
+
     var bookshelfSort: Int
         get() = appCtx.getPrefInt(PreferKey.bookshelfSort, 0)
         set(value) {
@@ -701,6 +707,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.disableMangaScale, true)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.disableMangaScale, value)
+        }
+
+    var disableMangaPageAnim: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.disableMangaPageAnim, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.disableMangaPageAnim, value)
         }
 
     //漫画预加载数量

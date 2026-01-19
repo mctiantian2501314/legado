@@ -1,4 +1,4 @@
-package io.legado.app.help
+package io.legado.app.help.webView
 
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -13,14 +13,15 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.escapeForJs
 import io.legado.app.utils.fromJsonObject
 import java.util.UUID
-import kotlin.toString
 
-class WebJsExtensions(private val source: BaseSource, private val activity: AppCompatActivity, private val webView: WebView): RssJsExtensions(activity, source) {
+class WebJsExtensions(private val source: BaseSource, activity: AppCompatActivity, private val webView: WebView): RssJsExtensions(activity, source) {
+
     /**
      * 由软件主动注入的js函数调用
      */
     @JavascriptInterface
     fun request(funName: String, jsParam: Array<String>, id: String) {
+        val activity = activityRef.get() ?: return
         Coroutine.async(activity.lifecycleScope) {
             when (funName) {
                 "run" -> {
