@@ -291,9 +291,8 @@ dependencies {
     implementation(libs.hutool.crypto)
 
     //firebase, 崩溃统计和性能统计
-    implementation(platform(libs.firebase.bom)) {
-        exclude group: 'com.google.firebase', module: 'protolite-well-known-types'
-    }
+    implementation(platform("com.google.protobuf:protobuf-bom:3.21.4"))
+    implementation(platform(libs.firebase.bom))
     implementation libs.firebase.analytics
     implementation libs.firebase.perf
 
