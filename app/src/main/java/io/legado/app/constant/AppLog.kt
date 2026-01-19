@@ -61,4 +61,6 @@ object AppLog {
         }
     }
 
+    private fun d(string: String) {}
+
 }
