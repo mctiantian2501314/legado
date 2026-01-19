@@ -408,8 +408,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     inner class CustomWebViewClient : WebViewClient() {
-
-        // 新增的私有辅助方法，用于处理Uri
+        // 新增的私有辅助方法
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {
             return when (url.scheme) {
                 "http", "https" -> false
@@ -457,13 +456,22 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
-            val cookieManager = CookieManager.getInstance()
-            url?.let {
-                val capturedCookies = cookieManager.getCookie(it) ?: ""
-                if (capturedCookies.isNotEmpty()) {
-                    val domain = NetworkUtils.getSubDomain(it)
-                    val sandboxKey = "cookie_sandbox_${domain}_${System.currentTimeMillis()}"
-                    CacheManager.putMemory(sandboxKey, capturedCookies)
+            val cookieManager = android.webkit.CookieManager.getInstance()
+
+            // 使用显式命名 currentUrl 的版本
+            url?.let { currentUrl ->
+                // 只处理有效的URL，不处理伪URL（如data:text/html等）
+                if (currentUrl.startsWith("http://") || currentUrl.startsWith("https://")) {
+                    val capturedCookies = cookieManager.getCookie(currentUrl) ?: ""
+                    if (capturedCookies.isNotEmpty()) {
+                        val domain = NetworkUtils.getSubDomain(currentUrl)
+                        val sandboxKey = "cookie_sandbox_${domain}_${System.currentTimeMillis()}"
+                        CacheManager.putMemory(sandboxKey, capturedCookies)
+                        // 可选：添加日志记录
+                        AppLog.put("[Cookie隔离] 浏览器Cookie已安全隔离，沙箱Key: $sandboxKey")
+                    }
+                    // !! 务必删除或注释掉原下行 !!
+                    // CookieStore.setCookie(currentUrl, cookieManager.getCookie(currentUrl))
                 }
             }
 
