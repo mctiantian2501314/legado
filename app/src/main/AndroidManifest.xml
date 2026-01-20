@@ -25,7 +25,7 @@
     <application
         android:name=".App"
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher_night_vision"
+        android:icon="@drawable/ic_launcher0"
         android:label="${app_name}"
         android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true"
