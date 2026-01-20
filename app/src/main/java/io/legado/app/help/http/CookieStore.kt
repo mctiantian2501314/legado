@@ -16,6 +16,7 @@ import io.legado.app.help.http.api.CookieManagerInterface
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.removeCookie
 import io.legado.app.utils.splitNotBlank
+import java.util.concurrent.TimeUnit
 
 @Keep
 object CookieStore : CookieManagerInterface {
@@ -35,10 +36,24 @@ object CookieStore : CookieManagerInterface {
     
     // Contaminated cookie patterns
     private val CONTAMINATED_COOKIE_PATTERNS = listOf(
-        Regex("^Hm_tf_.*"),
-        Regex("^Hm_lvt_.*"),
-        Regex("^Hm_lpvt_.*")
+        Regex("^Hm_tf_.*")
     )
+    
+    // Cookie whitelist for essential login credentials
+    private var COOKIE_WHITELIST = mutableListOf(
+        "sessionid",
+        "auth_token",
+        "login_token",
+        "fanqie_*",  // Support wildcard matching
+        "Hm_lvt_2667d29c8e792e6fa9182c20a3013175",
+        "Hm_lpvt_2667d29c8e792e6fa9182c20a3013175"
+    )
+    
+    // Contamination tolerance threshold (in milliseconds)
+    private var contaminationTolerance: Long = TimeUnit.MINUTES.toMillis(5)
+    
+    // Contamination check enabled flag
+    private var contaminationCheckEnabled: Boolean = true
 
     /**
      * 保存cookie到数据库，会自动识别url的二级域名
@@ -137,9 +152,9 @@ object CookieStore : CookieManagerInterface {
             if (key.startsWith("__attr_")) {
                 // Validate attributes
                 validCookieMap[key] = value
-            } else if (isValidCookieKey(key) && isValidCookieValue(value) && !isContaminatedCookie(key)) {
+            } else if (isValidCookieKey(key) && isValidCookieValue(value) && !isContaminatedCookie(key, value)) {
                 validCookieMap[key] = value
-            } else if (isContaminatedCookie(key)) {
+            } else if (isContaminatedCookie(key, value)) {
                 // Log contaminated cookie detection during retrieval
                 logCookieActivity("FILTER_CONTAMINATED", domain, "Contaminated cookie filtered: $key=$value")
             }
@@ -272,10 +287,76 @@ object CookieStore : CookieManagerInterface {
     /**
      * 检测cookie是否被污染
      */
-    private fun isContaminatedCookie(key: String): Boolean {
-        return CONTAMINATED_COOKIE_PATTERNS.any { pattern ->
-            pattern.matches(key)
+    private fun isContaminatedCookie(key: String, value: String = ""): Boolean {
+        // Skip check if contamination check is disabled
+        if (!contaminationCheckEnabled) {
+            return false
         }
+        
+        // Check if cookie is in whitelist
+        if (isInWhitelist(key)) {
+            return false
+        }
+        
+        // Check for contaminated patterns
+        if (CONTAMINATED_COOKIE_PATTERNS.any { pattern -> pattern.matches(key) }) {
+            return true
+        }
+        
+        // Special handling for Hm_* cookies with timestamp validation
+        if (key.startsWith("Hm_lvt_") || key.startsWith("Hm_lpvt_")) {
+            return isHmCookieContaminated(key, value)
+        }
+        
+        return false
+    }
+    
+    /**
+     * Check if cookie is in whitelist
+     */
+    private fun isInWhitelist(key: String): Boolean {
+        return COOKIE_WHITELIST.any { whitelistPattern ->
+            if (whitelistPattern.endsWith("*")) {
+                // Handle wildcard patterns
+                key.startsWith(whitelistPattern.substring(0, whitelistPattern.length - 1))
+            } else {
+                key == whitelistPattern
+            }
+        }
+    }
+    
+    /**
+     * Check if Hm_* cookie is contaminated based on timestamp difference
+     */
+    private fun isHmCookieContaminated(key: String, value: String): Boolean {
+        try {
+            val currentTime = System.currentTimeMillis() / 1000 // Convert to seconds
+            
+            if (key.startsWith("Hm_lvt_")) {
+                // Hm_lvt_ contains multiple timestamps separated by commas
+                val timestamps = value.split(",")
+                for (timestampStr in timestamps) {
+                    val timestamp = timestampStr.toLongOrNull() ?: continue
+                    val timeDiff = currentTime - timestamp
+                    if (timeDiff < 0 || timeDiff * 1000 > contaminationTolerance) {
+                        // Timestamp is in future or exceeds tolerance
+                        return true
+                    }
+                }
+            } else if (key.startsWith("Hm_lpvt_")) {
+                // Hm_lpvt_ contains single timestamp
+                val timestamp = value.toLongOrNull() ?: return true
+                val timeDiff = currentTime - timestamp
+                if (timeDiff < 0 || timeDiff * 1000 > contaminationTolerance) {
+                    // Timestamp is in future or exceeds tolerance
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            // If parsing fails, assume not contaminated
+        }
+        
+        return false
     }
     
     /**
@@ -285,7 +366,7 @@ object CookieStore : CookieManagerInterface {
         val filteredMap = mutableMapOf<String, String>()
         
         cookieMap.forEach { (key, value) ->
-            if (!key.startsWith("__attr_") && isContaminatedCookie(key)) {
+            if (!key.startsWith("__attr_") && isContaminatedCookie(key, value)) {
                 // Log contaminated cookie detection
                 logCookieActivity("FILTER_CONTAMINATED", "ALL", "Contaminated cookie detected: $key=$value")
             } else {
@@ -379,7 +460,7 @@ object CookieStore : CookieManagerInterface {
             }
             
             // Check for contaminated cookies
-            if (isContaminatedCookie(key)) {
+            if (isContaminatedCookie(key, value)) {
                 // Log contaminated cookie detection
                 logCookieActivity("DETECT_CONTAMINATED", "ALL", "Contaminated cookie detected: $key=$value")
                 continue
@@ -434,6 +515,71 @@ object CookieStore : CookieManagerInterface {
         
         // Log cookie clearing activity
         logCookieActivity("CLEAR", "ALL", null)
+    }
+    
+    /**
+     * 禁用Cookie污染检测
+     */
+    fun disableContaminationCheck() {
+        contaminationCheckEnabled = false
+        logCookieActivity("SETTING", "ALL", "Contamination check disabled")
+    }
+    
+    /**
+     * 启用Cookie污染检测
+     */
+    fun enableContaminationCheck() {
+        contaminationCheckEnabled = true
+        logCookieActivity("SETTING", "ALL", "Contamination check enabled")
+    }
+    
+    /**
+     * 设置Cookie污染检测的时间容忍度阈值
+     */
+    fun setContaminationTolerance(toleranceMs: Long) {
+        contaminationTolerance = toleranceMs
+        logCookieActivity("SETTING", "ALL", "Contamination tolerance set to ${toleranceMs}ms")
+    }
+    
+    /**
+     * 设置Cookie白名单
+     */
+    fun setCookieWhitelist(whitelist: List<String>) {
+        COOKIE_WHITELIST.clear()
+        COOKIE_WHITELIST.addAll(whitelist)
+        logCookieActivity("SETTING", "ALL", "Cookie whitelist updated: ${whitelist.size} entries")
+    }
+    
+    /**
+     * 仅清理污染的Cookie，保留合法Cookie
+     */
+    fun removeOnlyContaminatedCookies() {
+        try {
+            // Get all cookies from database
+            val allCookies = appDb.cookieDao.getAll()
+            var cleanedCount = 0
+            
+            allCookies.forEach { cookie ->
+                val cookieMap = cookieToMap(cookie.cookie)
+                val filteredMap = filterContaminatedCookies(cookieMap)
+                
+                if (filteredMap.size != cookieMap.size) {
+                    // Update cookie with filtered version
+                    val cleanedCookie = mapToCookie(filteredMap)
+                    val updatedCookie = cookie.copy(cookie = cleanedCookie ?: "")
+                    appDb.cookieDao.insert(updatedCookie)
+                    
+                    // Also update in memory cache
+                    CacheManager.deleteMemory("${cookie.url}_cookie")
+                    cleanedCount++
+                }
+            }
+            
+            // Log cleanup activity
+            logCookieActivity("CLEAN_CONTAMINATED", "ALL", "Cleaned $cleanedCount contaminated cookies")
+        } catch (e: Exception) {
+            AppLog.put("清理污染Cookie失败\n$e", e)
+        }
     }
 
     /**
