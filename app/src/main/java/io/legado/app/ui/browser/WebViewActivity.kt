@@ -64,6 +64,7 @@ import io.legado.app.help.http.CookieManager as AppCookieManager
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.escapeForJs
 import androidx.core.net.toUri
+import io.legado.app.utils.NetworkUtils
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
@@ -405,35 +406,51 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
+
+            // 确保Cookie污染检测开启
+            CookieStore.enableContaminationCheck()
+
             val cookieManager = CookieManager.getInstance()
-            val domain = viewModel.sourceOrigin.ifEmpty { viewModel.baseUrl }
-            url?.let {
+
+            url?.let { currentUrl ->
                 try {
-                    // Log cookie retrieval start
-                    AppLog.putDebug("WebView onPageFinished: Retrieving cookie for URL: $it")
-                    
-                    val cookie = cookieManager.getCookie(it)
-                    
-                    if (cookie != null && cookie.isNotBlank()) {
-                        // Log successful cookie retrieval
-                        AppLog.putDebug("WebView onPageFinished: Cookie retrieved successfully for URL: $it")
-                        AppLog.putDebug("WebView onPageFinished: Cookie length: ${cookie.length}")
-                        
-                        // Update cookie with proper null handling
-                        CookieStore.replaceCookie(domain, cookie)
-                        
-                        // Log cookie update completion
-                        AppLog.putDebug("WebView onPageFinished: Cookie updated successfully for domain: $domain")
+                    // 获取当前URL的Cookie
+                    val webViewCookie = cookieManager.getCookie(currentUrl)
+
+                    if (!webViewCookie.isNullOrBlank()) {
+                        // 记录Cookie获取成功
+                        AppLog.putDebug("WebView onPageFinished: Cookie retrieved for URL: $currentUrl")
+                        AppLog.putDebug("Cookie content length: ${webViewCookie.length}")
+
+                        if (webViewCookie.length > 200) {
+                            AppLog.putDebug("Cookie content (first 200 chars): ${webViewCookie.substring(0, 200)}...")
+                        } else {
+                            AppLog.putDebug("Cookie content: $webViewCookie")
+                        }
+
+                        // 提取域名
+                        val domain = NetworkUtils.getSubDomain(currentUrl)
+
+                        // 使用replaceCookie确保Cookie被正确保存（合并而不是覆盖）
+                        CookieStore.replaceCookie(domain, webViewCookie)
+
+                        // 立即验证保存是否成功
+                        val savedCookie = CookieStore.getCookie(domain)
+                        AppLog.putDebug("Immediate verification - Saved cookie length: ${savedCookie.length}")
+
+                        if (savedCookie.isNotBlank()) {
+                            AppLog.putDebug("Cookie saved successfully for domain: $domain")
+                        } else {
+                            AppLog.putDebug("WARNING: Cookie save may have failed for domain: $domain")
+                        }
                     } else {
-                        // Log cookie retrieval failure
-                        AppLog.putDebug("WebView onPageFinished: No cookie retrieved for URL: $it")
-                        // No action needed - just log the event
+                        AppLog.putDebug("WebView onPageFinished: No cookie found for URL: $currentUrl")
                     }
                 } catch (e: Exception) {
-                    // Log and handle any exceptions
-                    AppLog.put("WebView onPageFinished: Error processing cookie for URL: $it\n$e", e)
+                    AppLog.put("WebView onPageFinished: Error processing cookie for URL: $currentUrl", e)
                 }
             }
+
             view?.title?.let { title ->
                 if (title != url && title != view.url && title.isNotBlank()) {
                     binding.titleBar.title = title

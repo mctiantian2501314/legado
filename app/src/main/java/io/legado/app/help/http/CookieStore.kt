@@ -19,13 +19,6 @@ import io.legado.app.utils.removeCookie
 @Keep
 object CookieStore : CookieManagerInterface {
 
-    // Contaminated cookie patterns - ONLY these will be removed
-    private val CONTAMINATED_COOKIE_PATTERNS = listOf(
-        // 只匹配这两种 Cookie，正则表达式确保精确匹配
-        Regex("^Hm_lvt_.*"),
-        Regex("^Hm_lpvt_.*")
-    )
-
     // Cookie污染检测开关（默认开启）
     private var contaminationCheckEnabled: Boolean = true
 
@@ -110,11 +103,15 @@ object CookieStore : CookieManagerInterface {
      */
     override fun getCookie(url: String): String {
         val domain = NetworkUtils.getSubDomain(url)
+
+        // 获取内存中的cookie
         val cookie = getCookieNoSession(url)
         val sessionCookie = CookieManager.getSessionCookie(domain)
+
+        // 合并cookie
         val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
 
-        // 移除污染的Cookie（只移除 Hm_lvt_ 和 Hm_lpvt_）
+        // 过滤污染的Cookie（只移除 Hm_lvt_ 和 Hm_lpvt_）
         val validCookieMap = mutableMapOf<String, String>()
         cookieMap.forEach { (key, value) ->
             // 如果是污染的Cookie，则跳过
@@ -194,7 +191,7 @@ object CookieStore : CookieManagerInterface {
             val key = pairs[0].trim()
             val value = pairs[1].trim()
 
-            // 只检查是否是污染的Cookie
+            // 只检查是否是污染的Cookie（只过滤 Hm_lvt_ 和 Hm_lpvt_）
             if (isContaminatedCookie(key)) {
                 logCookieActivity("SKIP_CONTAMINATED", "PARSING", "$key=$value")
                 continue
@@ -273,7 +270,8 @@ object CookieStore : CookieManagerInterface {
             return false
         }
 
-        return CONTAMINATED_COOKIE_PATTERNS.any { pattern -> pattern.matches(key) }
+        // 只过滤这两种Cookie
+        return key.startsWith("Hm_lvt_") || key.startsWith("Hm_lpvt_")
     }
 
     /**
