@@ -363,7 +363,7 @@ jobs:
           if-no-files-found: ignore
           path: ${{ github.workspace }}/mapping/mapping.txt
 
-  # GitHub发布 - 已确认工作正常
+  # GitHub发布 - 修复时间格式问题
   github-release:
     needs: [ prepare, build ]
     if: github.event_name != 'pull_request' && github.repository == 'mctiantian2501314/legado'
@@ -409,6 +409,14 @@ jobs:
           echo "整理后的APK文件:"
           ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
+      # 生成构建时间（北京时间）
+      - name: Generate Build Time
+        id: build-time
+        run: |
+          BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          echo "BUILD_TIME=${BUILD_TIME}"
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+      
       # 发布正式版本（如果有更新日志变化）
       - name: Publish Official Release
         if: needs.prepare.outputs.updateLog_updated == 'yes'
@@ -422,14 +430,11 @@ jobs:
             
             ### 版本信息
             - 版本号: ${{ env.VERSION }}
-            - 构建时间: ${{ env.BUILD_TIME }}
+            - 构建时间: ${{ steps.build-time.outputs.build_time }}
             - 当日提交序号: ${{ needs.prepare.outputs.commit_count }}
           prerelease: false
           files: ${{ github.workspace }}/apk/*.apk
           fail_on_unmatched_files: false
-        env:
-          BUILD_TIME: ${{ format('{0:YYYY-MM-dd HH:mm:ss}', fromJSON('[""]')[0]) }}
-          TZ: Asia/Shanghai
       
       # 发布测试版（如果没有更新日志变化）
       - name: Publish Beta Release
@@ -444,18 +449,15 @@ jobs:
             
             ### 版本信息
             - 版本号: ${{ env.VERSION }}
-            - 构建时间: ${{ env.BUILD_TIME }}
+            - 构建时间: ${{ steps.build-time.outputs.build_time }}
             - 当日提交序号: ${{ needs.prepare.outputs.commit_count }}
             - 注: 此为测试版
           prerelease: true
           files: ${{ github.workspace }}/apk/*.apk
           fail_on_unmatched_files: false
           overwrite: true
-        env:
-          BUILD_TIME: ${{ format('{0:YYYY-MM-dd HH:mm:ss}', fromJSON('[""]')[0]) }}
-          TZ: Asia/Shanghai
 
-  # Gitee发布 - 修复上传问题
+  # Gitee发布 - 使用可靠的Action
   gitee-release:
     needs: [ prepare, build ]
     if: github.event_name != 'pull_request' && needs.prepare.outputs.gitee == 'yes'
@@ -486,82 +488,33 @@ jobs:
           echo "Gitee上传文件列表:"
           ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
-      # 使用专门的Gitee发布Action
+      # 使用wearerequired/gitee-release替代yanglbme/gitee-upload-release-action
+      - name: Generate Build Time for Gitee
+        id: gitee-build-time
+        run: |
+          BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+      
       - name: Upload to Gitee Release
         continue-on-error: true
         timeout-minutes: 10
-        uses: yanglbme/gitee-upload-release-action@main
+        uses: wearerequired/gitee-release@v1
         with:
-          # 必填
-          gitee-token: ${{ secrets.GITEE_TOKEN }}
-          tag: ${{ needs.prepare.outputs.updateLog_updated == 'yes' && needs.prepare.outputs.version || 'beta' }}
-          release-name: legado_app_${{ needs.prepare.outputs.version }}
-          release-body: |
+          auth_token: ${{ secrets.GITEE_TOKEN }}
+          tag_name: ${{ needs.prepare.outputs.updateLog_updated == 'yes' && needs.prepare.outputs.version || 'beta' }}
+          release_name: legado_app_${{ needs.prepare.outputs.version }}
+          body: |
             版本号: ${{ needs.prepare.outputs.version }}
+            构建时间: ${{ steps.gitee-build-time.outputs.build_time }}
             当日提交序号: ${{ needs.prepare.outputs.commit_count }}
             
             更新内容:
             ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
             
             ${{ needs.prepare.outputs.updateLog_updated != 'yes' && '注: 此为测试版' || '' }}
-          # 可选
           prerelease: ${{ needs.prepare.outputs.updateLog_updated != 'yes' }}
-          file-glob: true
-          file: apk-gitee/*.apk
-          # 设置超时
-          timeout: 300000  # 5分钟
+          files: apk-gitee/*.apk
           overwrite: true
-        env:
-          TZ: Asia/Shanghai
-
-  # 备用的Gitee发布方法（如果上面的方法失败）
-  gitee-release-backup:
-    needs: [ prepare, build ]
-    if: github.event_name != 'pull_request' && needs.prepare.outputs.gitee == 'yes' && failure()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          path: apk/
-      
-      - name: Upload to Gitee Release (Simple Method)
-        continue-on-error: true
-        timeout-minutes: 5
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          # 安装必要的工具
-          apt-get update && apt-get install -y curl jq
-          
-          # 简单方法：只上传一个文件作为示例
-          API_BASE="https://gitee.com/api/v5/repos/mctiantian2501314/legado"
-          
-          # 确定标签
-          if [ "${{ needs.prepare.outputs.updateLog_updated }}" == "yes" ]; then
-            TAG_NAME="$VERSION"
-            PRERELEASE="false"
-          else
-            TAG_NAME="beta"
-            PRERELEASE="true"
-          fi
-          
-          echo "尝试上传到Gitee: $TAG_NAME"
-          
-          # 尝试上传第一个APK文件
-          FIRST_APK=$(find apk -name "*.apk" | head -1)
-          if [ -n "$FIRST_APK" ] && [ -f "$FIRST_APK" ]; then
-            echo "上传文件: $FIRST_APK"
-            
-            # 这里只是一个简单的示例，实际可能需要更复杂的逻辑
-            # 由于Gitee API限制，这里只打印信息
-            echo "文件大小: $(stat -c%s "$FIRST_APK") 字节"
-            echo "Gitee发布准备完成"
-            echo "标签: $TAG_NAME"
-            echo "预发布: $PRERELEASE"
-          else
-            echo "没有找到APK文件"
-          fi
 
   # 蓝奏云上传
   lanzou:
@@ -637,6 +590,12 @@ jobs:
           echo "Telegram发送文件列表:"
           ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
+      - name: Generate Build Time for Telegram
+        id: telegram-time
+        run: |
+          BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          echo "构建时间: ${BUILD_TIME}"
+      
       - name: Post to channel
         continue-on-error: true
         timeout-minutes: 5
@@ -646,6 +605,7 @@ jobs:
           token: ${{ secrets.BOT_TOKEN }}
           message: |
             版本号：${{ needs.prepare.outputs.version }}
+            构建时间：$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
             当日提交序号：${{ needs.prepare.outputs.commit_count }}
             更新内容：
             ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
@@ -721,7 +681,7 @@ jobs:
 
   # 清理步骤 - 删除所有构建产物
   cleanup:
-    needs: [github-release, gitee-release, gitee-release-backup, lanzou, telegram, update-storage]
+    needs: [github-release, gitee-release, lanzou, telegram, update-storage]
     if: always()
     runs-on: ubuntu-latest
     steps:
