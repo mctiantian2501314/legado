@@ -263,15 +263,15 @@ object CookieStore : CookieManagerInterface {
 
     /**
      * 检测是否是污染的Cookie
-     * 只检测 Hm_lvt_ 和 Hm_lpvt_ 开头的Cookie
+
      */
     private fun isContaminatedCookie(key: String): Boolean {
         if (!contaminationCheckEnabled) {
             return false
         }
 
-        // 只过滤这两种Cookie
-        return key.startsWith("Hm_lvt_") || key.startsWith("Hm_lpvt_")
+
+        return key.startsWith("Hm_lvt_") || key.startsWith("Hm_lpvt_") || key.startsWith("Hm_tf_")
     }
 
     /**
