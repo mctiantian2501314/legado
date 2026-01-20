@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.adapter.ItemAnimation
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -70,7 +71,20 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     override val binding by viewBinding(ActivityBookSearchBinding::inflate)
     override val viewModel by viewModels<SearchViewModel>()
 
-    private val adapter by lazy { SearchAdapter(this, this) }
+    private val adapter by lazy {
+        SearchAdapter(this, this).apply {
+            // 配置基于硬件加速的过渡动画
+            itemAnimation = ItemAnimation.create()
+                .enabled(true)
+                .animation(ItemAnimation.SCALE_IN)
+                // 优化动画持续时长为 250ms，符合 0.2-0.3 秒的建议范围
+                .duration(250)
+                // 使用更自然的减速插值器，提升动画体验
+                .interpolator(android.view.animation.DecelerateInterpolator(1.5f))
+                // 仅对首次加载的项目应用动画，避免滚动时重复触发
+                .firstOnly(true)
+        }
+    }
     private val bookAdapter by lazy {
         BookAdapter(this, this).apply {
             setHasStableIds(true)
@@ -225,9 +239,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         binding.rvHistoryKey.layoutManager = FlexboxLayoutManager(this)
         binding.rvHistoryKey.adapter = historyKeyAdapter
         binding.rvHistoryKey.applyNavigationBarMargin()
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        val layoutManager = LinearLayoutManager(this)
+        // 设置预取项数量，提高滚动流畅度
+        layoutManager.initialPrefetchItemCount = 4
+        binding.recyclerView.layoutManager = layoutManager
         binding.recyclerView.adapter = adapter
         binding.recyclerView.itemAnimator = null
+        // 设置固定大小，避免内容变化时重新计算布局大小，提高滚动性能
+        binding.recyclerView.setHasFixedSize(true)
         binding.recyclerView.applyNavigationBarPadding()
         adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {

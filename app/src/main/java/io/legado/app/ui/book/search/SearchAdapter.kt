@@ -72,10 +72,15 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
-        binding.root.setOnClickListener {
-            getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.name, it.author, it.bookUrl)
-            }
+        // 移除重复的点击事件绑定，使用父类的 registerItemListener 机制
+        // 这样可以减少事件监听器数量，提高事件处理效率
+    }
+
+    init {
+        // 使用父类的 setOnItemClickListener 方法设置点击事件监听器
+        // 这样可以避免在每个 onBindViewHolder 调用时重复绑定事件
+        setOnItemClickListener { holder, item ->
+            callBack.showBookInfo(item.name, item.author, item.bookUrl)
         }
     }
 

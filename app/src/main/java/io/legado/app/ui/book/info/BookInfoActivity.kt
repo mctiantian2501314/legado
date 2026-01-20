@@ -519,6 +519,14 @@ class BookInfoActivity :
                 }
             }
         }
+        tvShelf.setOnLongClickListener {
+            viewModel.getBook()?.let {
+                showDialogFragment(
+                    GroupSelectDialog(it.group)
+                )
+            }
+            true
+        }
         tvOrigin.setOnClickListener {
             viewModel.getBook()?.let { book ->
                 if (book.isLocal) return@let
