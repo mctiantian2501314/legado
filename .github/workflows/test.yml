@@ -198,9 +198,9 @@ jobs:
           RELEASE_KEY_PASSWORD=gedoor_legado
           EOF
       
-      - name: Add Cronet ProGuard Rules
+      - name: Add Essential ProGuard Rules
         run: |
-          echo "添加Cronet ProGuard规则以解决R8编译错误"
+          echo "添加必要的ProGuard规则以解决R8编译错误"
           cat >> $GITHUB_WORKSPACE/app/proguard-rules.pro << 'EOF'
           
           # ===================================================
@@ -250,8 +250,109 @@ jobs:
             protected *;
           }
           
+          # ===================================================
+          # Hutool加密库规则 - 解决NoSuchAlgorithmException
+          # ===================================================
+          
+          -keep class cn.hutool.** { *; }
+          -keep class cn.hutool.crypto.** { *; }
+          -keep class cn.hutool.core.codec.** { *; }
+          
+          # 保留BouncyCastle加密提供者
+          -keep class org.bouncycastle.** { *; }
+          -keep class org.spongycastle.** { *; }
+          
+          # 保留所有加密相关的类和接口
+          -keep class * implements java.security.Provider {
+            *;
+          }
+          
+          -keep class java.security.** { *; }
+          -keep class javax.crypto.** { *; }
+          -keep class javax.security.** { *; }
+          
+          # 保留MessageDigest相关类
+          -keep class * extends java.security.MessageDigest {
+            *;
+          }
+          
+          # 保留所有加密算法名称
+          -keepclassmembers class * {
+            private static final java.lang.String *;
+          }
+          
+          -dontwarn org.bouncycastle.**
+          -dontwarn org.spongycastle.**
+          -dontwarn sun.security.**
+          -dontwarn javax.security.**
+          
+          # ===================================================
+          # 通用保留规则
+          # ===================================================
+          
+          # 保留所有native方法
+          -keepclasseswithmembernames class * {
+            native <methods>;
+          }
+          
+          # 保留自定义View的构造方法
+          -keepclasseswithmembers class * extends android.view.View {
+            public <init>(android.content.Context);
+            public <init>(android.content.Context, android.util.AttributeSet);
+            public <init>(android.content.Context, android.util.AttributeSet, int);
+          }
+          
+          # 保留Activity中的方法（避免空指针异常）
+          -keepclassmembers class * extends android.app.Activity {
+            public void *(android.view.View);
+          }
+          
+          # 保留枚举类
+          -keepclassmembers enum * {
+            public static **[] values();
+            public static ** valueOf(java.lang.String);
+          }
+          
+          # 保留Parcelable序列化类
+          -keep class * implements android.os.Parcelable {
+            public static final android.os.Parcelable$Creator *;
+          }
+          
+          # 保留Serializable序列化类
+          -keepnames class * implements java.io.Serializable
+          -keepclassmembers class * implements java.io.Serializable {
+            static final long serialVersionUID;
+            private static final java.io.ObjectStreamField[] serialPersistentFields;
+            private void writeObject(java.io.ObjectOutputStream);
+            private void readObject(java.io.ObjectInputStream);
+            java.lang.Object writeReplace();
+            java.lang.Object readResolve();
+          }
+          
+          # 保留R文件
+          -keep class **.R$* {
+            *;
+          }
+          
+          # ===================================================
+          # 反射相关保留规则
+          # ===================================================
+          
+          # 保留被@Keep注解的类
+          -keep @androidx.annotation.Keep class * { *; }
+          -keep @android.support.annotation.Keep class * { *; }
+          
+          # 保留通过反射调用的类和方法
+          -keepclassmembers class ** {
+            @androidx.annotation.Keep <methods>;
+            @android.support.annotation.Keep <methods>;
+          }
+          
+          # 保留类中的注解
+          -keepattributes *Annotation*, InnerClasses, Signature, EnclosingMethod
+          
           EOF
-          echo "Cronet ProGuard规则添加完成"
+          echo "ProGuard规则添加完成"
       
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
