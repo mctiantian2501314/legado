@@ -15,7 +15,6 @@ import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
@@ -26,7 +25,6 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.databinding.ActivityWebViewBinding
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.lib.dialogs.SelectItem
@@ -43,34 +41,40 @@ import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
-import java.net.URLDecoder
 import android.webkit.JavascriptInterface
-import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.AppLog
 import io.legado.app.help.webView.WebJsExtensions
-import io.legado.app.help.webView.WebJsExtensions.Companion.JSBridgeResult
+import io.legado.app.help.webView.WebJsExtensions.Companion.basicJs
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameBasic
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
-import io.legado.app.help.webView.WebJsExtensions.Companion.basicJs
+import androidx.lifecycle.lifecycleScope
+import io.legado.app.help.webView.PooledWebView
+import io.legado.app.help.webView.WebViewPool
+import io.legado.app.help.webView.WebViewPool.BLANK_HTML
+import io.legado.app.help.webView.WebViewPool.DATA_HTML
+import java.lang.ref.WeakReference
+import io.legado.app.help.http.CookieManager as AppCookieManager
+import androidx.core.net.toUri
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.help.http.CookieManager as AppCookieManager
 import io.legado.app.model.ReadBook
+import io.legado.app.help.webView.WebJsExtensions.Companion.JSBridgeResult
 import io.legado.app.utils.escapeForJs
-import androidx.core.net.toUri
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
         // 是否输出日志
         var sessionShowWebLog = false
     }
+
+    private lateinit var pooledWebView: PooledWebView
+    private lateinit var currentWebView: WebView
 
     override val binding by viewBinding(ActivityWebViewBinding::inflate)
     override val viewModel by viewModels<WebViewModel>()
@@ -79,6 +83,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var isCloudflareChallenge = false
     private var isFullScreen = false
     private var isfullscreen = false
+    private var needClearHistory = true
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -86,38 +91,95 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
     }
 
+    private fun refresh() {
+        currentWebView.reload()
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        // 使用WebView池获取WebView，优化性能
+        pooledWebView = WebViewPool.acquire(this)
+        currentWebView = pooledWebView.realWebView
+        binding.webViewContainer.addView(currentWebView)
+
+        // 确保清除历史记录
+        currentWebView.post {
+            currentWebView.clearHistory()
+        }
+
         binding.titleBar.title = intent.getStringExtra("title") ?: getString(R.string.loading)
         binding.titleBar.subtitle = intent.getStringExtra("sourceName")
+
         viewModel.initData(intent) {
             val url = viewModel.baseUrl
             val headerMap = viewModel.headerMap
             initWebView(url, headerMap)
             val html = viewModel.html
+
             if (html.isNullOrEmpty()) {
-                binding.webView.loadUrl(url, headerMap)
+                currentWebView.loadUrl(url, headerMap)
             } else {
                 if (viewModel.localHtml) {
                     viewModel.source?.let {
-                        val webJsExtensions = WebJsExtensions(it, this, binding.webView)
-                        binding.webView.addJavascriptInterface(webJsExtensions, nameJava)
+                        val webJsExtensions = WebJsExtensions(it, this, currentWebView)
+                        currentWebView.addJavascriptInterface(webJsExtensions, nameJava)
                     }
                 }
-                binding.webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
+                currentWebView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
             }
         }
+
+        // 清除历史记录
+        currentWebView.clearHistory()
+
+        // 设置返回键处理
         onBackPressedDispatcher.addCallback(this) {
             if (binding.customWebView.size > 0) {
+                // 网页全屏模式
                 customWebViewCallback?.onCustomViewHidden()
-                return@addCallback
-            } else if (binding.webView.canGoBack()
-                && binding.webView.copyBackForwardList().size > 1
-            ) {
-                binding.webView.goBack()
                 return@addCallback
             }
             if (isFullScreen) {
+                // 按钮触发的全屏模式
                 toggleFullScreen()
+                return@addCallback
+            }
+
+            // 智能后退逻辑（来自第二版本）
+            if (currentWebView.canGoBack()) {
+                val list = currentWebView.copyBackForwardList()
+                val size = list.size
+                if (size == 1) {
+                    finish()
+                    return@addCallback
+                }
+
+                val currentIndex = list.currentIndex
+                val currentItem = list.currentItem
+                val currentUrl = currentItem?.originalUrl ?: BLANK_HTML
+                val currentTitle = currentItem?.title
+                var steps = 1
+
+                for (i in currentIndex - 1 downTo 0) {
+                    val item = list.getItemAtIndex(i)
+                    val itemUrl = item.originalUrl
+                    if (itemUrl == BLANK_HTML) {
+                        finish()
+                        return@addCallback
+                    }
+                    if (itemUrl != currentUrl || currentTitle != item.title) {
+                        break
+                    }
+                    if (currentUrl == DATA_HTML) {
+                        break
+                    }
+                    steps++
+                }
+
+                if (steps == size) {
+                    finish()
+                    return@addCallback
+                }
+                currentWebView.goBackOrForward(-steps)
                 return@addCallback
             }
             finish()
@@ -140,19 +202,18 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_web_refresh -> binding.webView.reload()
+            R.id.menu_web_refresh -> refresh()
             R.id.menu_open_in_browser -> openUrl(viewModel.baseUrl)
             R.id.menu_copy_url -> sendToClip(viewModel.baseUrl)
             R.id.menu_ok -> {
                 if (viewModel.sourceVerificationEnable) {
-                    viewModel.saveVerificationResult(binding.webView) {
+                    viewModel.saveVerificationResult(currentWebView) {
                         finish()
                     }
                 } else {
                     finish()
                 }
             }
-
             R.id.menu_full_screen -> toggleFullScreen()
             R.id.menu_show_web_log -> {
                 sessionShowWebLog = !sessionShowWebLog
@@ -163,7 +224,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                     finish()
                 }
             }
-
             R.id.menu_delete_source -> {
                 alert(R.string.draw) {
                     setMessage(getString(R.string.sure_del) + "\n" + viewModel.sourceName)
@@ -179,12 +239,10 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         return super.onCompatOptionsItemSelected(item)
     }
 
-    //实现starBrowser调起页面全屏
+    // 切换全屏模式
     private fun toggleFullScreen() {
         isFullScreen = !isFullScreen
-
         toggleSystemBar(!isFullScreen)
-
         if (isFullScreen) {
             supportActionBar?.hide()
         } else {
@@ -195,13 +253,15 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView(url: String, headerMap: HashMap<String, String>) {
         binding.progressBar.fontColor = accentColor
-        binding.webView.webChromeClient = CustomWebChromeClient()
+        currentWebView.webChromeClient = CustomWebChromeClient()
+
         // 添加 JavaScript 接口
-        binding.webView.addJavascriptInterface(JSInterface(), nameBasic)
-        binding.webView.webViewClient = CustomWebViewClient()
-        binding.webView.settings.apply {
-            setDarkeningAllowed(AppConfig.isNightTheme)
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
+        currentWebView.webViewClient = CustomWebViewClient()
+
+        // 完整的WebSettings配置（来自第一版本）
+        currentWebView.settings.apply {
+            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
             allowContentAccess = true
@@ -214,12 +274,15 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                 userAgentString = it
             }
         }
+
+        // 应用Cookie到WebView
         AppCookieManager.applyToWebView(url)
-        binding.webView.setOnLongClickListener {
-            val hitTestResult = binding.webView.hitTestResult
+
+        // 长按图片保存功能
+        currentWebView.setOnLongClickListener {
+            val hitTestResult = currentWebView.hitTestResult
             if (hitTestResult.type == WebView.HitTestResult.IMAGE_TYPE ||
-                hitTestResult.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
-            ) {
+                hitTestResult.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
                 hitTestResult.extra?.let { webPic ->
                     selector(
                         arrayListOf(
@@ -237,48 +300,70 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             }
             return@setOnLongClickListener false
         }
-        binding.webView.setDownloadListener { downloadUrl, _, contentDisposition, _, _ ->
+
+        // 下载监听器（来自第一版本）
+        currentWebView.setDownloadListener { downloadUrl, _, contentDisposition, _, _ ->
             var fileName = URLUtil.guessFileName(downloadUrl, contentDisposition, null)
-            fileName = URLDecoder.decode(fileName, "UTF-8")
+            fileName = java.net.URLDecoder.decode(fileName, "UTF-8")
             binding.llView.longSnackbar(fileName, getString(R.string.action_download)) {
                 Download.start(this, downloadUrl, fileName)
             }
         }
     }
 
-    inner class JSInterface {
+    // JavaScript接口类（使用WeakReference防止内存泄漏）
+    class JSInterface(activity: WebViewActivity) {
+        private val activityRef: WeakReference<WebViewActivity> = WeakReference(activity)
+
         @JavascriptInterface
         fun lockOrientation(orientation: String) {
-            runOnUiThread {
-                if (isfullscreen) {
-                    requestedOrientation = when (orientation) {
-                        "portrait", "portrait-primary" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                        "portrait-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                        "landscape", "landscape-primary" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                        "landscape-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                        "any", "unspecified" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
-                        else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            val ctx = activityRef.get()
+            if (ctx != null && !ctx.isFinishing && !ctx.isDestroyed) {
+                ctx.runOnUiThread {
+                    if (ctx.isfullscreen) {
+                        ctx.requestedOrientation = when (orientation) {
+                            "portrait", "portrait-primary" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            "portrait-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                            "landscape", "landscape-primary" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            "landscape-secondary" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                            "any", "unspecified" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        }
                     }
                 }
             }
         }
+
         @JavascriptInterface
-        fun request(jsCode:String, id: String) {
-            Coroutine.async(lifecycleScope) {
-                AnalyzeRule(ReadBook.book, viewModel.source).run {
-                    setCoroutineContext(coroutineContext)
-                    evalJS(jsCode).toString()
+        fun request(jsCode: String, id: String) {
+            val ctx = activityRef.get()
+            if (ctx != null && !ctx.isFinishing && !ctx.isDestroyed) {
+                Coroutine.async(ctx.lifecycleScope) {
+                    AnalyzeRule(ReadBook.book, ctx.viewModel.source).run {
+                        setCoroutineContext(coroutineContext)
+                        evalJS(jsCode).toString()
+                    }
+                }.onSuccess { data ->
+                    ctx.currentWebView.evaluateJavascript(
+                        "window.$JSBridgeResult('$id', '${data.escapeForJs()}', null);",
+                        null
+                    )
+                }.onError {
+                    ctx.currentWebView.evaluateJavascript(
+                        "window.$JSBridgeResult('$id', null, '${it.localizedMessage?.escapeForJs()}');",
+                        null
+                    )
                 }
-            }.onSuccess { data ->
-                binding.webView.evaluateJavascript("window.$JSBridgeResult('$id', '${data.escapeForJs()}', null);", null)
-            }.onError {
-                binding.webView.evaluateJavascript("window.$JSBridgeResult('$id', null, '${it.localizedMessage?.escapeForJs()}');", null)
             }
         }
+
         @JavascriptInterface
         fun onCloseRequested() {
-            runOnUiThread {
-                close()
+            val ctx = activityRef.get()
+            if (ctx != null && !ctx.isFinishing && !ctx.isDestroyed) {
+                ctx.runOnUiThread {
+                    ctx.close()
+                }
             }
         }
     }
@@ -312,23 +397,34 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private fun close() {
         if (!isCloudflareChallenge) {
             if (viewModel.sourceVerificationEnable) {
-                viewModel.saveVerificationResult(binding.webView) {
+                viewModel.saveVerificationResult(currentWebView) {
                     finish()
                 }
-            }
-            else {
+            } else {
                 finish()
             }
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        currentWebView.pauseTimers()
+        currentWebView.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        currentWebView.resumeTimers()
+        currentWebView.onResume()
+    }
+
     override fun onDestroy() {
+        // 释放WebView到池中
+        WebViewPool.release(pooledWebView)
         super.onDestroy()
-        binding.webView.destroy()
     }
 
     inner class CustomWebChromeClient : WebChromeClient() {
-
         override fun onProgressChanged(view: WebView?, newProgress: Int) {
             super.onProgressChanged(view, newProgress)
             binding.progressBar.setDurProgress(newProgress)
@@ -353,16 +449,19 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             toggleSystemBar(true)
         }
 
-        /* 覆盖window.close() */
+        // 覆盖window.close()
         override fun onCloseWindow(window: WebView?) {
             close()
         }
 
-        /* 监听网页日志 */
+        // 监听网页日志
         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
             viewModel.source?.let {
                 if (sessionShowWebLog) {
-                    val consoleException = Exception("${consoleMessage.messageLevel().name}: \n${consoleMessage.message()}\n-Line ${consoleMessage.lineNumber()} of ${consoleMessage.sourceId()}")
+                    val consoleException = Exception(
+                        "${consoleMessage.messageLevel().name}: \n${consoleMessage.message()}\n" +
+                                "-Line ${consoleMessage.lineNumber()} of ${consoleMessage.sourceId()}"
+                    )
                     val message = viewModel.sourceName + ": ${consoleMessage.message()}"
                     when (consoleMessage.messageLevel()) {
                         ConsoleMessage.MessageLevel.LOG -> AppLog.put(message)
@@ -377,7 +476,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             }
             return false
         }
-
     }
 
     inner class CustomWebViewClient : WebViewClient() {
@@ -400,21 +498,25 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            if (needClearHistory) {
+                needClearHistory = false
+                currentWebView.clearHistory() // 清除历史记录
+            }
             super.onPageStarted(view, url, favicon)
-            binding.webView.evaluateJavascript(basicJs, null)
+            currentWebView.evaluateJavascript(basicJs, null)
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
 
-            // 确保Cookie污染检测开启
+            // 确保Cookie污染检测开启（来自第一版本）
             CookieStore.enableContaminationCheck()
 
             val cookieManager = CookieManager.getInstance()
 
             url?.let { currentUrl ->
                 try {
-                    // 获取当前URL的Cookie
+                    // 获取当前URL的Cookie（使用第一版本的详细逻辑）
                     val webViewCookie = cookieManager.getCookie(currentUrl)
 
                     if (!webViewCookie.isNullOrBlank()) {
@@ -451,12 +553,15 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                 }
             }
 
+            // 更新标题栏
             view?.title?.let { title ->
                 if (title != url && title != view.url && title.isNotBlank()) {
                     binding.titleBar.title = title
                 } else {
                     binding.titleBar.title = intent.getStringExtra("title")
                 }
+
+                // Cloudflare检测
                 view.evaluateJavascript("!!window._cf_chl_opt") {
                     try {
                         if (it == "true") {
@@ -464,7 +569,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                             AppLog.putDebug("WebView onPageFinished: Cloudflare challenge detected")
                         } else if (isCloudflareChallenge && viewModel.sourceVerificationEnable) {
                             AppLog.putDebug("WebView onPageFinished: Cloudflare challenge completed, saving verification result")
-                            viewModel.saveVerificationResult(binding.webView) {
+                            viewModel.saveVerificationResult(currentWebView) {
                                 finish()
                             }
                         }
@@ -476,23 +581,19 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
 
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {
-            when (url.scheme) {
-                "http", "https" -> {
-                    return false
-                }
-
+            return when (url.scheme) {
+                "http", "https" -> false
                 "legado", "yuedu" -> {
                     startActivity<OnLineImportActivity> {
                         data = url
                     }
-                    return true
+                    true
                 }
-
                 else -> {
                     binding.root.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
                         openUrl(url)
                     }
-                    return true
+                    true
                 }
             }
         }
@@ -505,7 +606,5 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         ) {
             handler?.proceed()
         }
-
     }
-
 }
