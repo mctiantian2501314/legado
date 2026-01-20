@@ -10,14 +10,14 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.text.AccentTextView
+        <com.eggreader.app.ui.widget.text.AccentTextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingBottom="8dp"
             android:text="@string/manga_epaper_stting"
             android:textSize="18sp" />
 
-        <io.legado.app.ui.widget.DetailSeekBar
+        <com.eggreader.app.ui.widget.DetailSeekBar
             android:id="@+id/dsb_epaper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -27,3 +27,4 @@
     </LinearLayout>
 
 </androidx.core.widget.NestedScrollView>
+

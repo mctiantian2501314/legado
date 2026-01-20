@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="primary">@color/md_blue_grey_600</color>
     <color name="primaryDark">@color/md_blue_grey_700</color>
@@ -43,3 +43,4 @@
     <!--statusBarBackground-->
     <color name="navigation_bar_bag">#222222</color>
 </resources>
+

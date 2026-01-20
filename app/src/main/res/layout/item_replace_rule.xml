@@ -10,7 +10,7 @@
     android:paddingStart="16dp"
     android:paddingEnd="16dp">
 
-    <io.legado.app.lib.theme.view.ThemeCheckBox
+    <com.eggreader.app.lib.theme.view.ThemeCheckBox
         android:id="@+id/cb_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -22,7 +22,7 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:ignore="RtlSymmetry" />
 
-    <io.legado.app.lib.theme.view.ThemeSwitch
+    <com.eggreader.app.lib.theme.view.ThemeSwitch
         android:id="@+id/swt_enabled"
         android:name="@string/enable"
         android:layout_width="wrap_content"
@@ -63,3 +63,4 @@
         tools:ignore="RtlHardcoded" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
+

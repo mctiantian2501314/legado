@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <!--App-->
     <string name="app_name">阅读</string>
     <string name="app_name_a">阅读·A</string>
@@ -1238,3 +1238,4 @@
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
 </resources>
+

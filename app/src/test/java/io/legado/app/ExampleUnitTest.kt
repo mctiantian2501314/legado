@@ -1,4 +1,4 @@
-package io.legado.app
+﻿package com.eggreader.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -17,3 +17,4 @@ class ExampleUnitTest {
     }
 
 }
+

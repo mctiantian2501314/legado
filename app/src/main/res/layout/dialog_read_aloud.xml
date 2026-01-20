@@ -132,7 +132,7 @@
             android:tooltipText="@string/set_timer"
             tools:ignore="UnusedAttribute" />
 
-        <io.legado.app.lib.theme.view.ThemeSeekBar
+        <com.eggreader.app.lib.theme.view.ThemeSeekBar
             android:id="@+id/seek_timer"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -186,7 +186,7 @@
                 android:layout_gravity="center"
                 android:layout_weight="1" />
 
-            <io.legado.app.lib.theme.view.ThemeSwitch
+            <com.eggreader.app.lib.theme.view.ThemeSwitch
                 android:id="@+id/cb_tts_follow_sys"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -215,7 +215,7 @@
                 android:tooltipText="@string/tts_speech_reduce"
                 tools:ignore="UnusedAttribute" />
 
-            <io.legado.app.lib.theme.view.ThemeSeekBar
+            <com.eggreader.app.lib.theme.view.ThemeSeekBar
                 android:id="@+id/seek_tts_speechRate"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"

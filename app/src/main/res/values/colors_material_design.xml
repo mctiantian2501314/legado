@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
 
     <!-- Google's Material Design colors from
@@ -336,3 +336,4 @@
     <color name="md_white_1000">#FFFFFF</color>
 
 </resources>
+

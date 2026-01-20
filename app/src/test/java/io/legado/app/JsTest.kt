@@ -1,8 +1,8 @@
-package io.legado.app
+﻿package com.eggreader.app
 
 import com.script.ScriptBindings
 import com.script.rhino.RhinoScriptEngine
-import io.legado.app.data.entities.BookChapter
+import com.eggreader.app.data.entities.BookChapter
 import org.intellij.lang.annotations.Language
 import org.junit.Assert
 import org.junit.Test

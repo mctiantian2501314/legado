@@ -1,12 +1,12 @@
-package io.legado.app
+﻿package com.eggreader.app
 
 import android.app.DownloadManager
 import android.net.Uri
 import android.os.Environment
 import android.webkit.WebSettings
 import android.webkit.WebView
-import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.runOnUI
+import com.eggreader.app.help.config.AppConfig
+import com.eggreader.app.utils.runOnUI
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Test

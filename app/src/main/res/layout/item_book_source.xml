@@ -9,7 +9,7 @@
     android:padding="16dp"
     android:scrollbars="none">
 
-    <io.legado.app.ui.widget.text.AccentTextView
+    <com.eggreader.app.ui.widget.text.AccentTextView
         android:id="@+id/tv_host_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -32,7 +32,7 @@
         app:barrierDirection="top"
         app:constraint_referenced_ids="cb_book_source,swt_enabled,iv_edit,iv_menu_more" />
 
-    <io.legado.app.lib.theme.view.ThemeCheckBox
+    <com.eggreader.app.lib.theme.view.ThemeCheckBox
         android:id="@+id/cb_book_source"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -47,7 +47,7 @@
         tools:ignore="TouchTargetSizeCheck"
         tools:text="@string/book_source" />
 
-    <io.legado.app.lib.theme.view.ThemeSwitch
+    <com.eggreader.app.lib.theme.view.ThemeSwitch
         android:id="@+id/swt_enabled"
         android:name="@string/enable"
         android:layout_width="wrap_content"
@@ -89,7 +89,7 @@
         app:layout_constraintTop_toBottomOf="@id/barrier"
         tools:ignore="RtlHardcoded" />
 
-    <io.legado.app.ui.widget.image.CircleImageView
+    <com.eggreader.app.ui.widget.image.CircleImageView
         android:id="@+id/iv_explore"
         android:layout_width="8dp"
         android:layout_height="8dp"
@@ -114,7 +114,7 @@
         tools:text="@string/debug_hint"
         tools:visibility="visible" />
 
-    <io.legado.app.lib.theme.view.ThemeProgressBar
+    <com.eggreader.app.lib.theme.view.ThemeProgressBar
         android:id="@+id/iv_progressBar"
         android:layout_width="25dp"
         android:layout_height="25dp"

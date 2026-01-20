@@ -1,7 +1,7 @@
-package io.legado.app
+﻿package com.eggreader.app
 
-import io.legado.app.help.config.AppConfig
-import io.legado.app.model.analyzeRule.AnalyzeUrl
+import com.eggreader.app.help.config.AppConfig
+import com.eggreader.app.model.analyzeRule.AnalyzeUrl
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 

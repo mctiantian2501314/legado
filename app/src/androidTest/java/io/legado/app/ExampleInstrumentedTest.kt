@@ -1,4 +1,4 @@
-package io.legado.app
+﻿package com.eggreader.app
 
 import android.content.Context
 import android.net.Uri
@@ -22,7 +22,7 @@ class ExampleInstrumentedTest {
         Log.d(
             "test",
             appContext.contentResolver.query(
-                Uri.parse("content://io.legado.app.api.ReaderProvider/sources/query"),
+                Uri.parse("content://com.eggreader.app.api.ReaderProvider/sources/query"),
                 null,
                 null,
                 null,
@@ -32,3 +32,4 @@ class ExampleInstrumentedTest {
         )
     }
 }
+

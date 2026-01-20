@@ -1,4 +1,4 @@
-<vector android:autoMirrored="true"
+﻿<vector android:autoMirrored="true"
     android:height="24dp"
     android:viewportHeight="48"
     android:viewportWidth="48"
@@ -15,3 +15,4 @@
         android:strokeColor="#39393A"
         android:strokeWidth="2" />
 </vector>
+

@@ -26,39 +26,39 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <io.legado.app.lib.theme.view.ThemeCheckBox
+            <com.eggreader.app.lib.theme.view.ThemeCheckBox
                 android:id="@+id/cb_enable"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/enable" />
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.eggreader.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <com.eggreader.app.lib.theme.view.ThemeEditText
                     android:id="@+id/edit_search_url"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/r_search_url"
                     tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.eggreader.app.ui.widget.text.TextInputLayout>
 
-            <io.legado.app.ui.widget.text.TextInputLayout
+            <com.eggreader.app.ui.widget.text.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingTop="3dp">
 
-                <io.legado.app.lib.theme.view.ThemeEditText
+                <com.eggreader.app.lib.theme.view.ThemeEditText
                     android:id="@+id/edit_cover_url_rule"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/rule_cover_url"
                     tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
-            </io.legado.app.ui.widget.text.TextInputLayout>
+            </com.eggreader.app.ui.widget.text.TextInputLayout>
 
         </LinearLayout>
 
@@ -72,7 +72,7 @@
         app:flexWrap="wrap"
         app:justifyContent="space_between">
 
-        <io.legado.app.ui.widget.text.AccentTextView
+        <com.eggreader.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_footer_left"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -94,7 +94,7 @@
                 android:textColor="@color/secondaryText"
                 tools:ignore="RtlHardcoded" />
 
-            <io.legado.app.ui.widget.text.AccentTextView
+            <com.eggreader.app.ui.widget.text.AccentTextView
                 android:id="@+id/tv_ok"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

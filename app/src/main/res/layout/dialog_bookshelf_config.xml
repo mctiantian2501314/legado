@@ -35,7 +35,7 @@
 
         </LinearLayout>
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <com.eggreader.app.lib.theme.view.ThemeSwitch
             android:id="@+id/sw_show_unread"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -44,7 +44,7 @@
             app:layout_constraintTop_toBottomOf="@+id/ll_group_style"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <com.eggreader.app.lib.theme.view.ThemeSwitch
             android:id="@+id/sw_show_last_update_time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -53,7 +53,7 @@
             app:layout_constraintTop_toBottomOf="@+id/sw_show_unread"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <com.eggreader.app.lib.theme.view.ThemeSwitch
             android:id="@+id/sw_show_wait_up_books"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -62,7 +62,7 @@
             app:layout_constraintTop_toBottomOf="@+id/sw_show_last_update_time"
             tools:ignore="TouchTargetSizeCheck" />
 
-        <io.legado.app.lib.theme.view.ThemeSwitch
+        <com.eggreader.app.lib.theme.view.ThemeSwitch
             android:id="@+id/sw_show_bookshelf_fast_scroller"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -80,7 +80,7 @@
             app:layout_constraintRight_toLeftOf="@+id/ll_sort"
             app:layout_constraintTop_toBottomOf="@+id/sw_show_bookshelf_fast_scroller">
 
-            <io.legado.app.ui.widget.text.AccentTextView
+            <com.eggreader.app.ui.widget.text.AccentTextView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:padding="6dp"
@@ -147,7 +147,7 @@
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toBottomOf="@id/sw_show_bookshelf_fast_scroller">
 
-            <io.legado.app.ui.widget.text.AccentTextView
+            <com.eggreader.app.ui.widget.text.AccentTextView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:padding="6dp"
@@ -207,7 +207,7 @@
             android:orientation="vertical"
             app:layout_constraintTop_toBottomOf="@+id/ll_layout">
 
-            <io.legado.app.ui.widget.text.AccentTextView
+            <com.eggreader.app.ui.widget.text.AccentTextView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:padding="6dp"
@@ -241,7 +241,7 @@
             </RadioGroup>
         </LinearLayout>
 
-        <io.legado.app.ui.widget.DetailSeekBar
+        <com.eggreader.app.ui.widget.DetailSeekBar
             android:id="@+id/margin"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

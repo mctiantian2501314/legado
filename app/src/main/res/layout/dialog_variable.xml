@@ -27,14 +27,14 @@
             app:popupTheme="@style/AppTheme.PopupOverlay"
             app:titleTextAppearance="@style/ToolbarTitle" />
 
-        <io.legado.app.ui.widget.text.AccentTextView
+        <com.eggreader.app.ui.widget.text.AccentTextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="3dp"
             android:text="variable"
             tools:ignore="HardcodedText" />
 
-        <io.legado.app.lib.theme.view.ThemeEditText
+        <com.eggreader.app.lib.theme.view.ThemeEditText
             android:id="@+id/tv_variable"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -51,7 +51,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <io.legado.app.ui.widget.text.AccentTextView
+                <com.eggreader.app.ui.widget.text.AccentTextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:padding="3dp"

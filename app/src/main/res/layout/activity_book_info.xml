@@ -21,7 +21,7 @@
         android:background="#50000000"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.TitleBar
+        <com.eggreader.app.ui.widget.TitleBar
             android:id="@+id/title_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -35,7 +35,7 @@
             android:layout_height="0dp"
             android:layout_weight="1">
 
-            <io.legado.app.ui.widget.NoChildScrollNestedScrollView
+            <com.eggreader.app.ui.widget.NoChildScrollNestedScrollView
                 android:id="@+id/scroll_view"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -57,7 +57,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp">
 
-                        <io.legado.app.ui.widget.image.ArcView
+                        <com.eggreader.app.ui.widget.image.ArcView
                             android:id="@+id/arc_view"
                             android:layout_width="match_parent"
                             android:layout_height="78dp"
@@ -75,7 +75,7 @@
                             app:cardCornerRadius="5dp"
                             app:cardElevation="8dp">
 
-                            <io.legado.app.ui.widget.image.CoverImageView
+                            <com.eggreader.app.ui.widget.image.CoverImageView
                                 android:id="@+id/iv_cover"
                                 android:layout_width="110dp"
                                 android:layout_height="160dp"
@@ -132,7 +132,7 @@
                                 android:layout_marginBottom="6dp"
                                 android:scrollbars="none">
 
-                                <io.legado.app.ui.widget.LabelsBar
+                                <com.eggreader.app.ui.widget.LabelsBar
                                     android:id="@+id/lb_kind"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
@@ -215,7 +215,7 @@
                                     tools:ignore="NestedWeights,RtlHardcoded,RtlSymmetry"
                                     tools:text="@string/origin_format" />
 
-                                <io.legado.app.ui.widget.text.AccentBgTextView
+                                <com.eggreader.app.ui.widget.text.AccentBgTextView
                                     android:id="@+id/tv_change_source"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
@@ -294,7 +294,7 @@
                                     tools:ignore="NestedWeights,RtlHardcoded,RtlSymmetry"
                                     tools:text="@string/group_s" />
 
-                                <io.legado.app.ui.widget.text.AccentBgTextView
+                                <com.eggreader.app.ui.widget.text.AccentBgTextView
                                     android:id="@+id/tv_change_group"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
@@ -339,7 +339,7 @@
                                     tools:ignore="NestedWeights,RtlHardcoded,RtlSymmetry"
                                     tools:text="@string/toc_s" />
 
-                                <io.legado.app.ui.widget.text.AccentBgTextView
+                                <com.eggreader.app.ui.widget.text.AccentBgTextView
                                     android:id="@+id/tv_toc_view"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
@@ -354,7 +354,7 @@
 
                         </LinearLayout>
 
-                        <io.legado.app.ui.widget.text.ScrollTextView
+                        <com.eggreader.app.ui.widget.text.ScrollTextView
                             android:id="@+id/tv_intro"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -375,7 +375,7 @@
 
                 </LinearLayout>
 
-            </io.legado.app.ui.widget.NoChildScrollNestedScrollView>
+            </com.eggreader.app.ui.widget.NoChildScrollNestedScrollView>
 
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
@@ -406,7 +406,7 @@
                 android:textColor="@color/primaryText"
                 android:textSize="15sp" />
 
-            <io.legado.app.ui.widget.text.AccentBgTextView
+            <com.eggreader.app.ui.widget.text.AccentBgTextView
                 android:id="@+id/tv_read"
                 android:layout_width="0dp"
                 android:layout_height="50dp"
@@ -421,3 +421,4 @@
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
+

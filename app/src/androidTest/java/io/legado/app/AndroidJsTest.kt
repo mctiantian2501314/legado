@@ -1,4 +1,4 @@
-package io.legado.app
+﻿package com.eggreader.app
 
 import cn.hutool.core.lang.JarClassLoader
 import com.script.ScriptBindings
@@ -43,7 +43,7 @@ class AndroidJsTest {
         RhinoScriptEngine.eval(js)
         @Language("js")
         val js1 = """
-            var returnData = new Packages.io.legado.app.api.ReturnData()
+            var returnData = new Packages.com.eggreader.app.api.ReturnData()
             returnData.getErrorMsg()
         """.trimIndent()
         val result1 = RhinoScriptEngine.eval(js1)

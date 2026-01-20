@@ -1,4 +1,4 @@
-package io.legado.app
+﻿package com.eggreader.app
 
 import androidx.room.Room
 import androidx.room.migration.Migration
@@ -6,7 +6,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.legado.app.data.AppDatabase
+import com.eggreader.app.data.AppDatabase
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

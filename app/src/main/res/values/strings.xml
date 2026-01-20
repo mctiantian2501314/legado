@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--App-->
     <string name="app_name">Legado</string>
@@ -1342,3 +1342,4 @@
     <string name="invalid_file_path">文件路径无效</string>
     <string name="is_system_tts_no_export">无法导出系统tts</string>
 </resources>
+

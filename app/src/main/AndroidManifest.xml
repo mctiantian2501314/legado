@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -25,7 +25,7 @@
     <application
         android:name=".App"
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_launcher_night_vision"
         android:label="${app_name}"
         android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true"
@@ -171,16 +171,16 @@
             android:launchMode="singleTask" />
         <!-- 音频播放界面 -->
         <activity
-            android:name="io.legado.app.ui.book.audio.AudioPlayActivity"
+            android:name=".ui.book.audio.AudioPlayActivity"
             android:launchMode="singleTask" />
         <!-- 视频播放器界面 -->
         <activity
-            android:name="io.legado.app.ui.video.VideoPlayerActivity"
+            android:name=".ui.video.VideoPlayerActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:launchMode="singleTask" />
         <!-- 授权界面 -->
         <activity
-            android:name="io.legado.app.lib.permission.PermissionActivity"
+            android:name=".lib.permission.PermissionActivity"
             android:theme="@style/Activity.Permission" />
         <!-- 二维码扫描 -->
         <activity
@@ -312,7 +312,7 @@
             android:launchMode="standard" />
         <!-- 书源登录 -->
         <activity
-            android:name="io.legado.app.ui.login.SourceLoginActivity"
+            android:name=".ui.login.SourceLoginActivity"
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true"
             android:theme="@style/AppTheme.Transparent" />

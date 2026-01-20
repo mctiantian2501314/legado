@@ -10,14 +10,14 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.text.AccentTextView
+        <com.eggreader.app.ui.widget.text.AccentTextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingBottom="8dp"
             android:text="@string/skip_book_credits"
             android:textSize="18sp" />
 
-        <io.legado.app.ui.widget.DetailSeekBar
+        <com.eggreader.app.ui.widget.DetailSeekBar
             android:id="@+id/open_credits"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -26,7 +26,7 @@
             app:max="180"
             app:title="片头" />
 
-        <io.legado.app.ui.widget.DetailSeekBar
+        <com.eggreader.app.ui.widget.DetailSeekBar
             android:id="@+id/close_credits"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -38,3 +38,4 @@
     </LinearLayout>
 
 </androidx.core.widget.NestedScrollView>
+
