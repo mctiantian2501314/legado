@@ -191,7 +191,7 @@ object CookieStore : CookieManagerInterface {
             val key = pairs[0].trim()
             val value = pairs[1].trim()
 
-            // 只检查是否是污染的Cookie（只过滤 Hm_lvt_ 和 Hm_lpvt_）
+            // 只检查是否是污染的Cookie
             if (isContaminatedCookie(key)) {
                 logCookieActivity("SKIP_CONTAMINATED", "PARSING", "$key=$value")
                 continue
