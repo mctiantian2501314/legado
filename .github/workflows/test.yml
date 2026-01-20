@@ -6,8 +6,6 @@ on:
       - main
     paths:
       - '**'
-      # - '!**/assets/**'
-      # - '!**.md'
       - '!**/ISSUE_TEMPLATE/**'
       - '!**/modules/web/**'
   pull_request:
@@ -46,8 +44,6 @@ jobs:
           fetch-depth: 0  # 获取完整的git历史，用于计算当日提交数量
       
       # 步骤2: 设置新的版本号格式：年份.月份.日期.当日提交序号
-      # 格式: 26.1.1.1 表示26年1月1日的第1个提交
-      # 格式: 26.1.1.2 表示26年1月1日的第2个提交
       - id: set-ver
         run: |
           # 设置时区为东八区（中国标准时间）
@@ -70,9 +66,9 @@ jobs:
           
           # 获取今日的提交数量（包括当前提交）
           # 注意：git log --since 的时间范围是从当天00:00:00开始
-          commit_count=$(git log --oneline --since="$(date +%Y-%m-%d) 00:00:00" | wc -l)
+          commit_count=$(git log --oneline --since="$(date +%Y-%m-%d) 00:00:00" --until="$(date +%Y-%m-%d) 23:59:59" | wc -l)
           
-          # 如果commit_count为0（可能是时间问题），至少设置为1
+          # 如果commit_count为0，至少设置为1
           if [ "$commit_count" -eq "0" ]; then
             commit_count=1
           fi
@@ -95,11 +91,6 @@ jobs:
           # 输出到GitHub Actions
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "commit_count=$commit_count" >> $GITHUB_OUTPUT
-          
-          # 调试信息
-          echo "=== 版本信息 ==="
-          echo "版本号: $version"
-          echo "当日提交数: $commit_count"
       
       # 步骤3: 检查是否配置了各种发布渠道的密钥
       - id: check
@@ -120,13 +111,11 @@ jobs:
       # 步骤4: 生成更新日志内容
       - id: updateLog
         run: |
-          # 获取更多提交历史
           git fetch --unshallow --depth=20 origin main 2>/dev/null || git fetch --depth=20 origin main 2>/dev/null || true
           UPDATED_CONTENT=""
           IS_MERGE_PR=false
           COMMIT_MSG="${GITHUB_EVENT_HEAD_COMMIT_MESSAGE:-}"
           
-          # 检查是否为合并提交
           if [[ -n "$COMMIT_MSG" ]]; then
             if [[ "$COMMIT_MSG" =~ ^"Merge pull request" ]] || 
               [[ "$COMMIT_MSG" =~ ^"Merge branch" ]] || 
@@ -135,16 +124,13 @@ jobs:
             fi
           fi
           
-          # 检查哪些文件发生了变化
           CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null)
           UPDATE_LOG_CHANGED=$(echo "$CHANGED_FILES" | grep -q "app/src/main/assets/updateLog.md" && echo "yes" || echo "no")
           CRONET_JSON_CHANGED=$(echo "$CHANGED_FILES" | grep -q "app/src/main/assets/cronet.json" && echo "yes" || echo "no")
           
-          # 如果更新日志文件变化但cronet.json未变化，标记为需要发布正式版
           if [ "$UPDATE_LOG_CHANGED" = "yes" ] && [ "$CRONET_JSON_CHANGED" = "no" ]; then
             echo "updated=yes" >> $GITHUB_OUTPUT
             if [ -f "app/src/main/assets/updateLog.md" ]; then
-              # 提取最新的更新内容
               UPDATED_CONTENT=$(awk '
               /^\*\*20/ && !found {
                 found=1
@@ -161,10 +147,8 @@ jobs:
               ' app/src/main/assets/updateLog.md)
             fi
           elif [ "$IS_MERGE_PR" = true ]; then
-            # 如果是合并PR，使用提交信息作为更新内容
             UPDATED_CONTENT="$COMMIT_MSG"
           else
-            # 否则提取最近的提交信息
             if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
               COMMIT_RANGE="${{ github.event.before }}..${{ github.event.after }}"
               if git rev-parse "$COMMIT_RANGE" >/dev/null 2>&1; then
@@ -175,24 +159,19 @@ jobs:
             fi
           fi
           
-          # 如果没有获取到更新内容，使用最后一次提交信息
           if [ -z "$UPDATED_CONTENT" ]; then
             UPDATED_CONTENT=$(git log -1 --pretty=%B)
           fi
           
-          # 将内容转为JSON格式
           CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"Error generating update content\"")
           echo "body=$CONTENT_JSON" >> $GITHUB_OUTPUT
       
       # 步骤5: 设置构建矩阵
-      # 根据更新日志是否变化决定构建类型
       - id: set-matrix
         run: |
           if [ "${{ steps.updateLog.outputs.updated }}" == "yes" ]; then
-            # 如果有更新日志变化，构建原包名和共存两个版本
             echo 'build_matrix={"product":["app"],"type":["release","releaseS"]}' >> $GITHUB_OUTPUT
           else
-            # 否则只构建原包名版本
             echo 'build_matrix={"product":["app"],"type":["release"]}' >> $GITHUB_OUTPUT
           fi
 
@@ -208,31 +187,25 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       COMMIT_COUNT: ${{ needs.prepare.outputs.commit_count }}
     steps:
-      # 步骤1: 检出代码（不限制深度）
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       
-      # 步骤2: 设置JDK 17环境
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 17
       
-      # 步骤3: 清空18+列表文件
       - name: Clear 18PlusList.txt
         run: |
           echo "清空18PlusList.txt"
           echo "">$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt
       
-      # 步骤4: 添加APK签名配置
       - name: Release Apk Sign
         run: |
           echo "给apk增加签名"
-          # 复制签名文件
           cp $GITHUB_WORKSPACE/.github/workflows/legado.jks $GITHUB_WORKSPACE/app/legado.jks
-          # 添加gradle.properties配置
           cat >> $GITHUB_WORKSPACE/gradle.properties << EOF
           RELEASE_STORE_FILE=./legado.jks
           RELEASE_KEY_ALIAS=legado
@@ -240,8 +213,6 @@ jobs:
           RELEASE_KEY_PASSWORD=gedoor_legado
           EOF
       
-      # 步骤5: 添加Cronet ProGuard规则（修复关键步骤）
-      # 添加缺失的Cronet类保持规则，解决R8编译错误
       - name: Add Cronet ProGuard Rules
         run: |
           echo "添加Cronet ProGuard规则以解决R8编译错误"
@@ -251,54 +222,44 @@ jobs:
           # Cronet网络库规则 - 解决R8缺失类错误
           # ===================================================
           
-          # 保持所有Cronet相关类
           -keep class org.chromium.net.** { *; }
           -keep class com.google.android.gms.org.conscrypt.** { *; }
           -keep class com.google.net.** { *; }
           
-          # 保持Cronet提供者类
           -keep class * extends org.chromium.net.CronetProvider {
             public <methods>;
             protected <methods>;
           }
           
-          # 保持Cronet引擎构建器
           -keep class org.chromium.net.CronetEngine$Builder {
             public <methods>;
             protected <methods>;
           }
           
-          # 解决HttpEngineNativeProvider缺失问题
           -keep class org.chromium.net.impl.HttpEngineNativeProvider { *; }
           -keep class org.chromium.net.impl.NativeCronetProvider { *; }
           -keep class org.chromium.net.impl.JavaCronetProvider { *; }
           
-          # 保持Cronet回调接口
           -keep interface org.chromium.net.** { *; }
           
-          # 不警告Cronet相关类
           -dontwarn org.chromium.net.**
           -dontwarn com.google.android.gms.org.conscrypt.**
           -dontwarn com.google.net.**
           
-          # 保持所有Cronet相关的内部类
           -keepclasseswithmembers class org.chromium.net.** {
             *;
           }
           
-          # 保持Cronet引擎的方法
           -keepclassmembers class org.chromium.net.CronetEngine {
             public *;
             protected *;
           }
           
-          # 保持CronetURLRequest回调
           -keepclassmembers class * implements org.chromium.net.UrlRequest$Callback {
             public *;
             protected *;
           }
           
-          # 保持Cronet上传数据提供者
           -keepclassmembers class * implements org.chromium.net.UploadDataProvider {
             public *;
             protected *;
@@ -307,31 +268,25 @@ jobs:
           EOF
           echo "Cronet ProGuard规则添加完成"
       
-      # 步骤6: 设置Gradle环境
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
       
-      # 步骤7: 使用Gradle构建
       - name: Build With Gradle
         continue-on-error: true
         run: |
-          # 设置构建类型名称
           if [ "${{ env.type }}" == 'release' ]; then
             typeName="原包名"
           else
             typeName="共存"
-            # 修改构建配置为releaseS（共存版本）
             sed "s/'.release'/'.releaseS'/" $GITHUB_WORKSPACE/app/build.gradle  -i
           fi
           
           echo "统一版本号为: ${{ env.VERSION }}"
-          # 在build.gradle中设置新的版本号格式
           sed "/def version/c def version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
           
           echo "开始${{ env.product }}$typeName构建"
           chmod +x gradlew
           
-          # 构建APK
           echo "构建命令: ./gradlew assemble${{ env.product }}release"
           if ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all; then
             echo "构建成功"
@@ -340,17 +295,13 @@ jobs:
             echo "构建失败"
             build_success=false
             
-            # 检查是否有生成的缺失规则文件
             if [ -f "$GITHUB_WORKSPACE/app/build/outputs/mapping/*/missing_rules.txt" ]; then
               echo "找到missing_rules.txt，应用缺失规则..."
-              # 将缺失规则追加到proguard-rules.pro
               cat $GITHUB_WORKSPACE/app/build/outputs/mapping/*/missing_rules.txt >> $GITHUB_WORKSPACE/app/proguard-rules.pro
               
               echo "清理并重新尝试构建..."
-              # 清理构建缓存
               ./gradlew clean
               
-              # 重新构建
               if ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all; then
                 echo "重新构建成功"
                 build_success=true
@@ -361,25 +312,20 @@ jobs:
             fi
           fi
           
-          # 如果构建成功，重命名APK文件
           if [ "$build_success" = true ]; then
             echo "修改APK文件名，使用新版本号格式"
             mkdir -p ${{ github.workspace }}/apk/
             
-            # 查找并重命名APK文件
             for file in `ls ${{ github.workspace }}/app/build/outputs/apk/*/*/*.apk 2>/dev/null || true`; do
               if [ "${{ env.type }}" == 'release' ]; then
-                # 原包名版本：legado_26.1.1_原包名.apk
                 mv "$file" ${{ github.workspace }}/apk/legado_${{ env.VERSION }}_$typeName.apk
               else
-                # 共存版本：legado_26.1.1.1_共存.apk
                 mv "$file" ${{ github.workspace }}/apk/legado_${{ env.VERSION }}_$typeName.apk
               fi
             done
             
             echo "移动mapping文件"
             mkdir -p ${{ github.workspace }}/mapping/
-            # 移动mapping文件
             for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt 2>/dev/null || true`; do
               mv "$file" ${{ github.workspace }}/mapping/mapping.txt
             done
@@ -387,17 +333,14 @@ jobs:
             echo "构建失败，跳过文件移动"
           fi
       
-      # 步骤8: 移动缺失规则文件
       - name: Move Missing Rules Files
         run: |
           echo "移动missing_rules.txt文件"
           mkdir -p ${{ github.workspace }}/mapping/
-          # 查找并移动missing_rules.txt文件
           for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null || true`; do
             mv "$file" ${{ github.workspace }}/mapping/missing_rules.txt
           done
       
-      # 步骤9: 上传缺失规则文件到制品
       - name: Upload Missing Rules File To Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -405,16 +348,13 @@ jobs:
           if-no-files-found: ignore
           path: ${{ github.workspace }}/mapping/missing_rules.txt
       
-      # 步骤10: 检查构建产物
       - name: Check Build production
         run: |
-          # 检查apk目录是否存在
           if [ ! -d ${{ github.workspace }}/apk ]; then
             echo "构建产物目录不存在! 检查gradle日志。"
             exit 1
           fi
           cd ${{ github.workspace }}/apk/
-          # 检查是否有APK文件
           if [ ! -e legado_*.apk ]; then
             echo "未找到构建产物APK文件! 检查gradle日志。"
             exit 1
@@ -424,7 +364,6 @@ jobs:
           echo "版本号: ${{ env.VERSION }}"
           echo "当日提交次数: ${{ env.COMMIT_COUNT }}"
       
-      # 步骤11: 上传APK到制品
       - name: Upload App To Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -432,7 +371,6 @@ jobs:
           if-no-files-found: ignore
           path: ${{ github.workspace }}/apk/*.apk
       
-      # 步骤12: 上传Mapping文件到制品
       - name: Upload Mapping File To Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -442,40 +380,33 @@ jobs:
 
   prerelease:
     needs: [ prepare, build ]
-    if: github.event_name != 'pull_request' && github.repository == 'mctiantian2501314/legado'  # 修改用户名
+    if: github.event_name != 'pull_request' && github.repository == 'mctiantian2501314/legado'
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      # 步骤1: 检出代码
       - uses: actions/checkout@v5
         with:
           fetch-depth: 1
       
-      # 步骤2: 下载构建产物
       - uses: actions/download-artifact@v7
         with:
           path: apk/
       
-      # 步骤3: 整理APK文件
       - working-directory: apk/
         run: |
-          # 移动所有APK文件到当前目录
           mv */*.apk . 2>/dev/null || true
           rm -rf */ 2>/dev/null || true
           
           echo "整理APK文件，当前目录:"
           ls -la
           
-          # 重命名APK文件，移除中文标识，保留新版本号格式
           for file in `ls *.apk 2>/dev/null || true`; do
             if [[ "$file" == *原包名* ]]; then
-              # 原包名版本：legado_26.1.1_release.apk
               new_name=$(echo $file | sed "s/原包名/release/")
               mv "$file" "$new_name"
               echo "重命名: $file -> $new_name"
             elif [[ "$file" == *共存* ]]; then
-              # 共存版本：legado_26.1.1.1_releaseS.apk
               new_name=$(echo $file | sed "s/共存/releaseS/")
               mv "$file" "$new_name"
               echo "重命名: $file -> $new_name"
@@ -485,7 +416,49 @@ jobs:
           echo "整理后的APK文件:"
           ls -la *.apk
       
-      # 步骤4: 发布正式版本（如果有更新日志变化）
+      # 修复：使用更可靠的方式管理beta标签
+      - name: Delete Pre-Release and Beta Tag
+        if: needs.prepare.outputs.updateLog_updated != 'yes'
+        run: |
+          # 删除beta release（如果存在）
+          if gh release view beta &>/dev/null; then
+            echo "删除beta release..."
+            gh release delete beta -y
+          fi
+          
+          # 删除beta标签（如果存在）
+          echo "检查并删除beta标签..."
+          if git ls-remote --tags origin | grep -q "refs/tags/beta"; then
+            echo "删除远程beta标签..."
+            git push origin --delete beta 2>/dev/null || true
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      
+      # 修复：使用自定义的标签创建步骤
+      - name: Create Beta Tag
+        if: needs.prepare.outputs.updateLog_updated != 'yes'
+        run: |
+          echo "创建beta标签..."
+          
+          # 配置git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 获取当前提交的SHA
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "当前提交SHA: $CURRENT_SHA"
+          
+          # 创建本地beta标签
+          git tag -f beta
+          
+          # 推送标签到远程
+          git push origin beta --force
+          
+          echo "beta标签创建成功"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      
       - name: Publish Official Release
         if: needs.prepare.outputs.updateLog_updated == 'yes'
         uses: softprops/action-gh-release@v2
@@ -504,27 +477,7 @@ jobs:
           files: ${{ github.workspace }}/apk/*.apk
           fail_on_unmatched_files: true
       
-      # 步骤5: 删除预发布版本（如果没有更新日志变化）
-      - name: Delete Pre-Release
-        if: needs.prepare.outputs.updateLog_updated != 'yes'
-        run: |
-          if gh release view beta &>/dev/null; then
-            gh release delete beta -y
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-      
-      # 步骤6: 创建或更新beta标签
-      - name: Create or update beta tag
-        if: needs.prepare.outputs.updateLog_updated != 'yes'
-        uses: richardsimko/update-tag@v1
-        with:
-          tag_name: beta
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      # 步骤7: 发布预发布版本
-      - name: Publish Pre-Release
+      - name: Publish Beta Release
         if: needs.prepare.outputs.updateLog_updated != 'yes'
         uses: softprops/action-gh-release@v2
         with:
@@ -548,12 +501,9 @@ jobs:
     if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes' }}
     runs-on: ubuntu-latest
     env:
-      # 蓝奏云登录信息
       ylogin: ${{ secrets.LANZOU_ID }}
       phpdisk_info: ${{ secrets.LANZOU_PSD }}
-      # 蓝奏云文件夹ID
       LANZOU_FOLDER_ID: ${{ secrets.LANZOU_FOLDER_ID }}
-      # 蓝奏云分享链接
       LANZOU_URL: ${{ secrets.LANZOU_URL }}
     steps:
       - uses: actions/checkout@v5
@@ -645,7 +595,7 @@ jobs:
         continue-on-error: true
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          GITEE_USER: "mctiantian2501314"  # 修改为你的Gitee用户名
+          GITEE_USER: "mctiantian2501314"
           GITEE_REPO: "legado"
           VERSION: ${{ needs.prepare.outputs.version }}
           UPDATE_CONTENT: ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
@@ -655,7 +605,6 @@ jobs:
           API_BASE="https://gitee.com/api/v5/repos/$GITEE_USER/$GITEE_REPO"
           AUTH_HEADER="Authorization: token $GITEE_TOKEN"
           
-          # 根据条件设置标签和发布类型
           if [ "$UPDATE_UPDATED" = "yes" ]; then
             TAG_NAME="$VERSION"
             PRERELEASE="false"
@@ -668,7 +617,6 @@ jobs:
             echo "🧪 发布预发布版: $TAG_NAME"
           fi
           
-          # 删除旧Release
           if [ "$TAG_NAME" = "beta" ]; then
             if release_data=$(curl -sH "$AUTH_HEADER" "$API_BASE/releases/tags/beta"); then
               release_id=$(echo "$release_data" | jq -r '.id // empty')
@@ -687,7 +635,6 @@ jobs:
             fi
           fi
           
-          # 创建新Release，带重试机制
           MAX_RETRIES=3
           RETRY_COUNT=0
           RELEASE_CREATED=false
@@ -715,13 +662,11 @@ jobs:
             fi
           done
           
-          # 检查是否成功创建Release
           if [ -z "$RELEASE_ID" ]; then
             echo "❌ 创建Release失败，跳过文件上传"
             exit 1
           fi
           
-          # 上传所有APK文件
           for APK_FILE in apk/*.apk; do
             curl -sX POST \
               -H "$AUTH_HEADER" \
@@ -753,16 +698,11 @@ jobs:
         continue-on-error: true
         if: steps.check-apk.outputs.apk_exists == 'true'
         run: |
-          # 设置Git配置
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          # 克隆目标仓库
-          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo  # 修改用户名
-          # 创建目录（如果不存在）
+          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo
           mkdir -p yuedu-repo/sigma
-          # 复制releaseS APK文件并重命名
           cp ./apk-releaseS/*.apk yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
-          # 提交更改
           cd yuedu-repo
           git add sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
           git commit -m "Update legado Sigma to version ${{ needs.prepare.outputs.version }} (当日第${{ needs.prepare.outputs.commit_count }}个提交)"
