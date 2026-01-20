@@ -843,8 +843,8 @@ jobs:
             
             # 发布
             npm publish || echo "发布失败或已存在相同版本"
-否则
+          else
             echo "没有找到APK文件，跳过发布"
           fi
-环境:
+        env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
