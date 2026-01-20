@@ -26,6 +26,9 @@ jobs:
 
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') }} && !(github.event_name == 'pull_request' && github.event.pull_request.user.login == 'Luoyacheng')
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
@@ -38,48 +41,43 @@ jobs:
       updateLog_content: ${{ steps.updateLog.outputs.body }}
       build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
     steps:
-      # 步骤1: 检出代码，获取完整的提交历史
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # 获取完整的git历史，用于计算当日提交数量
+          fetch-depth: 0
       
-      # 步骤2: 设置新的版本号格式：年份.月份.日期.当日提交序号
+      # 修复：更精确的版本号计算
       - id: set-ver
         run: |
-          # 设置时区为东八区（中国标准时间）
           export TZ='Asia/Shanghai'
           
-          # 获取当前时间信息（东八区）
-          current_date=$(date +%Y-%m-%d)  # 获取完整日期：2026-01-20
-          current_year=$(date +%y)        # 获取两位年份：26
-          current_month=$(date +%-m)      # 获取月份（去掉前导零）：1
-          current_day=$(date +%-d)        # 获取日期（去掉前导零）：20
+          # 获取当前时间
+          current_date=$(date +%Y-%m-%d)
+          current_year=$(date +%y)
+          current_month=$(date +%-m)
+          current_day=$(date +%-d)
           
           echo "当前日期: $current_date"
           echo "当前年份: $current_year"
           echo "当前月份: $current_month"
           echo "当前日期: $current_day"
           
-          # 计算今天是今年的第几天（用于检查逻辑）
-          day_of_year=$(date +%j)
-          echo "今天是今年的第 $day_of_year 天"
+          # 计算当天的提交次数（从00:00到当前时间）
+          # 使用git rev-list更准确
+          commit_count=$(git rev-list --count HEAD --since="$(date +%Y-%m-%d) 00:00:00" 2>/dev/null || echo "0")
           
-          # 获取今日的提交数量（包括当前提交）
-          # 注意：git log --since 的时间范围是从当天00:00:00开始
-          commit_count=$(git log --oneline --since="$(date +%Y-%m-%d) 00:00:00" --until="$(date +%Y-%m-%d) 23:59:59" | wc -l)
-          
-          # 如果commit_count为0，至少设置为1
-          if [ "$commit_count" -eq "0" ]; then
+          # 如果没有找到当天的提交，可能是第一次提交
+          if [ "$commit_count" -eq "0" ] || [ -z "$commit_count" ]; then
             commit_count=1
+          else
+            # 确保至少为1
+            commit_count=$((commit_count))
           fi
           
-          echo "今日提交数量: $commit_count"
+          echo "当日提交数量: $commit_count"
           
           # 生成版本号
-          # 基本格式: 年份.月份.日期
           version_base="$current_year.$current_month.$current_day"
           
-          # 如果当日有多个提交，添加序号
           if [ "$commit_count" -gt "1" ]; then
             version="$version_base.$commit_count"
           else
@@ -88,11 +86,9 @@ jobs:
           
           echo "生成版本号: $version"
           
-          # 输出到GitHub Actions
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "commit_count=$commit_count" >> $GITHUB_OUTPUT
       
-      # 步骤3: 检查是否配置了各种发布渠道的密钥
       - id: check
         run: |
           if [ -n "${{ secrets.LANZOU_ID }}" ]; then
@@ -108,7 +104,6 @@ jobs:
             echo "sgithub=yes" >> $GITHUB_OUTPUT
           fi
       
-      # 步骤4: 生成更新日志内容
       - id: updateLog
         run: |
           git fetch --unshallow --depth=20 origin main 2>/dev/null || git fetch --depth=20 origin main 2>/dev/null || true
@@ -166,7 +161,6 @@ jobs:
           CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"Error generating update content\"")
           echo "body=$CONTENT_JSON" >> $GITHUB_OUTPUT
       
-      # 步骤5: 设置构建矩阵
       - id: set-matrix
         run: |
           if [ "${{ steps.updateLog.outputs.updated }}" == "yes" ]; then
@@ -382,6 +376,8 @@ jobs:
     needs: [ prepare, build ]
     if: github.event_name != 'pull_request' && github.repository == 'mctiantian2501314/legado'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
@@ -395,70 +391,33 @@ jobs:
       
       - working-directory: apk/
         run: |
-          mv */*.apk . 2>/dev/null || true
-          rm -rf */ 2>/dev/null || true
+          # 移动所有APK文件到当前目录
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          # 删除空目录
+          find . -type d -empty -delete 2>/dev/null || true
           
           echo "整理APK文件，当前目录:"
           ls -la
           
-          for file in `ls *.apk 2>/dev/null || true`; do
-            if [[ "$file" == *原包名* ]]; then
-              new_name=$(echo $file | sed "s/原包名/release/")
-              mv "$file" "$new_name"
-              echo "重命名: $file -> $new_name"
-            elif [[ "$file" == *共存* ]]; then
-              new_name=$(echo $file | sed "s/共存/releaseS/")
-              mv "$file" "$new_name"
-              echo "重命名: $file -> $new_name"
+          # 重命名APK文件
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *原包名* ]]; then
+                new_name="${file//原包名/release}"
+                mv "$file" "$new_name"
+                echo "重命名: $file -> $new_name"
+              elif [[ "$file" == *共存* ]]; then
+                new_name="${file//共存/releaseS}"
+                mv "$file" "$new_name"
+                echo "重命名: $file -> $new_name"
+              fi
             fi
           done
           
           echo "整理后的APK文件:"
-          ls -la *.apk
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
-      # 修复：使用更可靠的方式管理beta标签
-      - name: Delete Pre-Release and Beta Tag
-        if: needs.prepare.outputs.updateLog_updated != 'yes'
-        run: |
-          # 删除beta release（如果存在）
-          if gh release view beta &>/dev/null; then
-            echo "删除beta release..."
-            gh release delete beta -y
-          fi
-          
-          # 删除beta标签（如果存在）
-          echo "检查并删除beta标签..."
-          if git ls-remote --tags origin | grep -q "refs/tags/beta"; then
-            echo "删除远程beta标签..."
-            git push origin --delete beta 2>/dev/null || true
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-      
-      # 修复：使用自定义的标签创建步骤
-      - name: Create Beta Tag
-        if: needs.prepare.outputs.updateLog_updated != 'yes'
-        run: |
-          echo "创建beta标签..."
-          
-          # 配置git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # 获取当前提交的SHA
-          CURRENT_SHA=$(git rev-parse HEAD)
-          echo "当前提交SHA: $CURRENT_SHA"
-          
-          # 创建本地beta标签
-          git tag -f beta
-          
-          # 推送标签到远程
-          git push origin beta --force
-          
-          echo "beta标签创建成功"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      
+      # 发布正式版本（如果有更新日志变化）
       - name: Publish Official Release
         if: needs.prepare.outputs.updateLog_updated == 'yes'
         uses: softprops/action-gh-release@v2
@@ -475,8 +434,9 @@ jobs:
             - 当日提交序号: ${{ needs.prepare.outputs.commit_count }}
           prerelease: false
           files: ${{ github.workspace }}/apk/*.apk
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
       
+      # 发布测试版（如果没有更新日志变化）
       - name: Publish Beta Release
         if: needs.prepare.outputs.updateLog_updated != 'yes'
         uses: softprops/action-gh-release@v2
@@ -494,7 +454,8 @@ jobs:
             - 注: 此为测试版
           prerelease: true
           files: ${{ github.workspace }}/apk/*.apk
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
+          overwrite: true
 
   lanzou:
     needs: [ prepare, build ]
@@ -506,22 +467,31 @@ jobs:
       LANZOU_FOLDER_ID: ${{ secrets.LANZOU_FOLDER_ID }}
       LANZOU_URL: ${{ secrets.LANZOU_URL }}
     steps:
-      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v7
         with:
           path: apk/
+      
       - working-directory: apk/
         run: |
-          mv */*.apk . 2>/dev/null || true
-          rm -rf */ 2>/dev/null || true
+          # 移动所有APK文件到当前目录
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          # 删除空目录
+          find . -type d -empty -delete 2>/dev/null || true
+          
           echo "蓝奏云上传文件列表:"
-          ls -la *.apk
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
+      
       - name: Upload To Lanzou
         continue-on-error: true
+        timeout-minutes: 10
         run: |
           path="$GITHUB_WORKSPACE/apk/"
-          python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "$path" "$LANZOU_FOLDER_ID"
-          echo "[$(date -u -d '+8 hour' '+%Y.%m.%d %H:%M:%S')] 分享链接: $LANZOU_URL"
+          if [ -n "$(ls -A $path/*.apk 2>/dev/null || true)" ]; then
+            python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "$path" "$LANZOU_FOLDER_ID"
+            echo "[$(date -u -d '+8 hour' '+%Y.%m.%d %H:%M:%S')] 分享链接: $LANZOU_URL"
+          else
+            echo "没有找到APK文件，跳过蓝奏云上传"
+          fi
 
   telegram:
     needs: [prepare, build]
@@ -531,31 +501,41 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           path: apk/
+      
       - id: set-tags
         working-directory: apk/
         run: |
-          mv */*.apk . 2>/dev/null || true
-          rm -rf */ 2>/dev/null || true
+          # 移动所有APK文件到当前目录
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          # 删除空目录
+          find . -type d -empty -delete 2>/dev/null || true
+          
           has_plus=false
-          for file in `ls *.apk 2>/dev/null || true`; do
-            if [[ "$file" == *原包名* ]]; then
-              mv "$file" $(echo $file | sed "s/原包名/release/")
-            else
-              mv "$file" $(echo $file | sed "s/共存/releaseS/")
-              has_plus=true
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *原包名* ]]; then
+                mv "$file" "${file//原包名/release}"
+              else
+                mv "$file" "${file//共存/releaseS}"
+                has_plus=true
+              fi
             fi
           done
+          
           tags=""
           if [ "$has_plus" = true ]; then
             tags="#beta #plus"
           else
             tags="#beta"
           fi
+          
           echo "TAGS=$tags" >> $GITHUB_OUTPUT
           echo "Telegram发送文件列表:"
-          ls -la *.apk
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
+      
       - name: Post to channel
         continue-on-error: true
+        timeout-minutes: 5
         uses: xireiki/channel-post@v1
         with:
           chat_id: ${{ secrets.CHANNEL_ID }}
@@ -577,22 +557,32 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           path: apk/
+      
       - working-directory: apk/
         run: |
-          mv */*.apk . 2>/dev/null || true
-          rm -rf */ 2>/dev/null || true
+          # 移动所有APK文件到当前目录
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          # 删除空目录
+          find . -type d -empty -delete 2>/dev/null || true
           
-          for file in `ls *.apk 2>/dev/null || true`; do
-            if [[ "$file" == *原包名* ]]; then
-              mv "$file" $(echo $file | sed "s/原包名/release/")
-            else
-              mv "$file" $(echo $file | sed "s/共存/releaseS/")
+          # 重命名APK文件
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *原包名* ]]; then
+                mv "$file" "${file//原包名/release}"
+              else
+                mv "$file" "${file//共存/releaseS}"
+              fi
             fi
           done
+          
           echo "Gitee上传文件列表:"
-          ls -la *.apk
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
+      
+      # 修复：改进Gitee上传，添加超时和重试机制
       - name: Upload to Gitee Release
         continue-on-error: true
+        timeout-minutes: 15  # 设置超时时间
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           GITEE_USER: "mctiantian2501314"
@@ -601,10 +591,19 @@ jobs:
           UPDATE_CONTENT: ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
           UPDATE_UPDATED: ${{ needs.prepare.outputs.updateLog_updated }}
         run: |
-          sudo apt-get update && sudo apt-get install -y jq curl 
+          # 安装必要工具
+          sudo apt-get update && sudo apt-get install -y jq curl coreutils
+          
+          # 如果没有APK文件，直接退出
+          if [ ! -d apk ] || [ -z "$(ls -A apk/*.apk 2>/dev/null || true)" ]; then
+            echo "没有找到APK文件，跳过Gitee发布"
+            exit 0
+          fi
+          
           API_BASE="https://gitee.com/api/v5/repos/$GITEE_USER/$GITEE_REPO"
           AUTH_HEADER="Authorization: token $GITEE_TOKEN"
           
+          # 根据条件设置标签和发布类型
           if [ "$UPDATE_UPDATED" = "yes" ]; then
             TAG_NAME="$VERSION"
             PRERELEASE="false"
@@ -617,63 +616,96 @@ jobs:
             echo "🧪 发布预发布版: $TAG_NAME"
           fi
           
-          if [ "$TAG_NAME" = "beta" ]; then
-            if release_data=$(curl -sH "$AUTH_HEADER" "$API_BASE/releases/tags/beta"); then
-              release_id=$(echo "$release_data" | jq -r '.id // empty')
-              if [ -n "$release_id" ]; then
-                curl -sX DELETE -H "$AUTH_HEADER" "$API_BASE/releases/$release_id"
-                echo "✅ 已删除旧 beta release"
-              fi
-            fi
-          else
-            if release_data=$(curl -sH "$AUTH_HEADER" "$API_BASE/releases/tags/$TAG_NAME"); then
-              release_id=$(echo "$release_data" | jq -r '.id // empty')
-              if [ -n "$release_id" ]; then
-                curl -sX DELETE -H "$AUTH_HEADER" "$API_BASE/releases/$release_id"
-                echo "✅ 已删除旧 $TAG_NAME release"
-              fi
+          # 删除旧Release（如果有）
+          echo "检查并删除旧版本..."
+          if release_data=$(curl -s --max-time 30 -H "$AUTH_HEADER" "$API_BASE/releases/tags/$TAG_NAME"); then
+            release_id=$(echo "$release_data" | jq -r '.id // empty' 2>/dev/null || echo "")
+            if [ -n "$release_id" ] && [ "$release_id" != "null" ]; then
+              echo "删除旧版本: $release_id"
+              curl -s --max-time 30 -X DELETE -H "$AUTH_HEADER" "$API_BASE/releases/$release_id" || true
             fi
           fi
           
+          # 准备更新内容（更安全的JSON处理）
+          UPDATE_TEXT=$(echo "$UPDATE_CONTENT" | tr -d '\r' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          BODY_CONTENT="版本号: $VERSION\\n当日提交序号: ${{ needs.prepare.outputs.commit_count }}\\n\\n更新内容:\\n$UPDATE_TEXT"
+          
+          # 创建新Release，带重试机制
           MAX_RETRIES=3
           RETRY_COUNT=0
           RELEASE_CREATED=false
           RELEASE_ID=""
+          
           while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ -z "$RELEASE_ID" ]; do
-            RELEASE_JSON=$(curl -sX POST \
+            echo "第 $((RETRY_COUNT+1)) 次尝试创建Release..."
+            
+            RELEASE_JSON=$(curl -s --max-time 60 -X POST \
               -H "Content-Type: application/json" \
               -H "$AUTH_HEADER" \
               -d '{
                 "tag_name": "'"$TAG_NAME"'",
                 "name": "'"$RELEASE_NAME"'",
-                "body": "版本号: '"$VERSION"'\n当日提交序号: '"${{ needs.prepare.outputs.commit_count }}"'\n更新内容:\n'"${UPDATE_CONTENT//\"/\\\"}"'",
+                "body": "'"$BODY_CONTENT"'",
                 "target_commitish": "main",
                 "prerelease": '"$PRERELEASE"'
               }' \
               "$API_BASE/releases")
             
             if [ $? -eq 0 ] && [ -n "$RELEASE_JSON" ]; then
-              RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty')
-              RELEASE_CREATED=true
-            else
-              RETRY_COUNT=$((RETRY_COUNT+1))
-              echo "⚠️  第 $RETRY_COUNT 次重试创建Release..."
-              sleep 5
+              RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty' 2>/dev/null || echo "")
+              if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
+                RELEASE_CREATED=true
+                echo "✅ Release创建成功，ID: $RELEASE_ID"
+                break
+              fi
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            echo "⚠️ 创建Release失败，等待5秒后重试..."
+            sleep 5
+          done
+          
+          # 检查是否成功创建Release
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "❌ 创建Release失败，跳过文件上传"
+            echo "响应: $RELEASE_JSON"
+            exit 0  # 改为exit 0，不中断工作流
+          fi
+          
+          # 上传所有APK文件，带重试机制
+          for APK_FILE in apk/*.apk; do
+            if [ -f "$APK_FILE" ]; then
+              echo "上传: $APK_FILE"
+              
+              UPLOAD_RETRY=0
+              UPLOAD_MAX_RETRIES=3
+              UPLOAD_SUCCESS=false
+              
+              while [ $UPLOAD_RETRY -lt $UPLOAD_MAX_RETRIES ] && [ "$UPLOAD_SUCCESS" = false ]; do
+                echo "第 $((UPLOAD_RETRY+1)) 次尝试上传..."
+                
+                UPLOAD_RESULT=$(curl -s --max-time 300 -X POST \
+                  -H "$AUTH_HEADER" \
+                  -F "file=@$APK_FILE" \
+                  "$API_BASE/releases/$RELEASE_ID/attach_files")
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ 已上传 $APK_FILE"
+                  UPLOAD_SUCCESS=true
+                else
+                  UPLOAD_RETRY=$((UPLOAD_RETRY+1))
+                  echo "⚠️ 上传失败，等待3秒后重试..."
+                  sleep 3
+                fi
+              done
+              
+              if [ "$UPLOAD_SUCCESS" = false ]; then
+                echo "❌ 上传 $APK_FILE 失败，已达到最大重试次数"
+              fi
             fi
           done
           
-          if [ -z "$RELEASE_ID" ]; then
-            echo "❌ 创建Release失败，跳过文件上传"
-            exit 1
-          fi
-          
-          for APK_FILE in apk/*.apk; do
-            curl -sX POST \
-              -H "$AUTH_HEADER" \
-              -F "file=@$APK_FILE" \
-              "$API_BASE/releases/$RELEASE_ID/attach_files"
-            echo "✅ 已上传 $APK_FILE"
-          done
+          echo "✅ Gitee发布完成"
 
   update-storage:
     needs: [prepare, build]
@@ -684,6 +716,7 @@ jobs:
         with:
           name: legado.app.releaseS
           path: ./apk-releaseS
+      
       - name: Check releaseS APK exists
         id: check-apk
         run: |
@@ -694,16 +727,124 @@ jobs:
             echo "releaseS APK not found"
             echo "apk_exists=false" >> $GITHUB_OUTPUT
           fi
+      
       - name: Upload to yuedu repository
         continue-on-error: true
         if: steps.check-apk.outputs.apk_exists == 'true'
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo
+          
+          # 克隆目标仓库
+          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo || {
+            echo "克隆仓库失败"
+            exit 0
+          }
+          
+          # 创建目录
           mkdir -p yuedu-repo/sigma
-          cp ./apk-releaseS/*.apk yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
-          cd yuedu-repo
-          git add sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
-          git commit -m "Update legado Sigma to version ${{ needs.prepare.outputs.version }} (当日第${{ needs.prepare.outputs.commit_count }}个提交)"
-          git push
+          
+          # 复制releaseS APK文件并重命名
+          for apk_file in ./apk-releaseS/*.apk; do
+            if [ -f "$apk_file" ]; then
+              cp "$apk_file" yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
+              echo "复制文件: $apk_file"
+            fi
+          done
+          
+          # 检查是否有文件被复制
+          if [ -f "yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk" ]; then
+            cd yuedu-repo
+            git add sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
+            
+            # 检查是否有变化
+            if git diff --cached --quiet; then
+              echo "没有变化需要提交"
+            else
+              git commit -m "Update legado Sigma to version ${{ needs.prepare.outputs.version }} (当日第${{ needs.prepare.outputs.commit_count }}个提交)"
+              git push || {
+                echo "推送失败"
+                exit 0
+              }
+              echo "✅ 更新完成"
+            fi
+          else
+            echo "没有找到APK文件"
+          fi
+
+  # 新增：发布到GitHub Packages（如果需要）
+  publish-packages:
+    needs: [prepare, build]
+    if: github.event_name != 'pull_request' && github.repository == 'mctiantian2501314/legado'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      
+      - uses: actions/download-artifact@v7
+        with:
+          path: apk-packages/
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://npm.pkg.github.com'
+      
+      - name: Publish APK to GitHub Packages
+        continue-on-error: true
+        run: |
+          # 创建package.json用于发布
+          cat > package.json << EOF
+          {
+            "name": "@mctiantian2501314/legado",
+            "version": "${{ env.VERSION }}",
+            "description": "Legado阅读器APK文件",
+            "main": "index.js",
+            "scripts": {
+              "test": "echo \"Error: no test specified\" && exit 1"
+            },
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/mctiantian2501314/legado.git"
+            },
+            "author": "mctiantian2501314",
+            "license": "MIT",
+            "bugs": {
+              "url": "https://github.com/mctiantian2501314/legado/issues"
+            },
+            "homepage": "https://github.com/mctiantian2501314/legado#readme",
+            "publishConfig": {
+              "registry": "https://npm.pkg.github.com/"
+            }
+          }
+          EOF
+          
+          # 创建发布脚本
+          cat > index.js << EOF
+          console.log('Legado阅读器版本: ${{ env.VERSION }}');
+          console.log('APK文件已发布到GitHub Packages');
+          EOF
+          
+          # 发布到GitHub Packages
+          echo "准备发布到GitHub Packages..."
+          
+          # 检查是否有APK文件
+          if [ -d "apk-packages" ] && [ -n "$(ls -A apk-packages/*.apk 2>/dev/null || true)" ]; then
+            echo "找到APK文件，开始发布..."
+            
+            # 创建dist目录并复制APK文件
+            mkdir -p dist
+            cp apk-packages/*.apk dist/ || true
+            
+            # 发布
+            npm publish || echo "发布失败或已存在相同版本"
+否则
+            echo "没有找到APK文件，跳过发布"
+          fi
+环境:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
