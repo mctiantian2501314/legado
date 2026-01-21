@@ -714,17 +714,35 @@ jobs:
           echo "清理构建目录"
           ./gradlew clean 2>&1 | tail -50 || echo "清理完成"
 
-      - name: Precompile Sources
+      - name: Precompile Custom Views
         if: env.DATA_BINDING_ENABLED == 'yes' && env.CUSTOM_VIEWS_EXIST == 'yes'
         run: |
-          echo "=== 预编译源代码 ==="
-          echo "预编译自定义视图类，确保数据绑定生成时能够找到符号"
+          echo "=== 预编译自定义视图 ==="
+          echo "优先编译自定义视图类，确保数据绑定生成时能够找到符号"
           
-          # 预编译源代码，确保自定义视图类先编译
-          if ./gradlew compile${{ env.product }}${{ env.type }}Sources --build-cache --daemon; then
-            echo "✅ 预编译成功"
+          # 分步骤编译：先编译Java/Kotlin源代码，再处理数据绑定
+          echo "1. 清理之前的构建产物"
+          ./gradlew clean --build-cache --daemon || echo "清理完成"
+          
+          echo "2. 编译自定义视图类（跳过数据绑定生成）"
+          # 使用--no-build-cache避免缓存干扰，确保重新编译
+          if ./gradlew compile${{ env.product }}${{ env.type }}Kotlin compile${{ env.product }}${{ env.type }}JavaWithJavac --no-build-cache --daemon --no-parallel; then
+            echo "✅ 自定义视图编译成功"
           else
-            echo "⚠️  预编译失败，继续构建"
+            echo "⚠️  自定义视图编译失败，尝试替代方案"
+            # 尝试使用更基础的编译任务
+            if ./gradlew :app:compileKotlin :app:compileJava --no-build-cache --daemon; then
+              echo "✅ 基础编译成功"
+            else
+              echo "⚠️  基础编译也失败，继续构建"
+            fi
+          fi
+          
+          echo "3. 生成数据绑定类"
+          if ./gradlew :app:dataBindingGenBaseClasses${{ env.product }}${{ env.type }} --build-cache --daemon; then
+            echo "✅ 数据绑定生成成功"
+          else
+            echo "⚠️  数据绑定生成失败，继续构建"
           fi
 
       - name: Build with Gradle
