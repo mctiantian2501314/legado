@@ -1,4 +1,4 @@
-name: Test Build
+Test Build
 
 on:
   push:
@@ -22,9 +22,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  BUILD_CACHE_VERSION: v1
-
 jobs:
 
   prepare:
@@ -43,37 +40,13 @@ jobs:
       updateLog_updated: ${{ steps.updateLog.outputs.updated }}
       updateLog_content: ${{ steps.updateLog.outputs.body }}
       build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
-      branch_name: ${{ steps.get-branch.outputs.branch_name }}
-      commit_hash: ${{ steps.get-commit.outputs.commit_hash }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
       
-      - name: Get Branch Name
-        id: get-branch
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "branch_name=${{ github.head_ref }}" >> $GITHUB_OUTPUT
-          else
-            echo "branch_name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Get Commit Hash
-        id: get-commit
-        run: |
-          echo "commit_hash=${{ github.sha }}" >> $GITHUB_OUTPUT
-      
-      - name: Setup Timezone
-        run: |
-          echo "Setting up Shanghai timezone"
-          export TZ='Asia/Shanghai'
-          echo "Current time: $(date)"
-      
-      - name: Generate Version Number
-        id: set-ver
+      # 版本号生成：年份.月份.日期.当日提交序号
+      - id: set-ver
         run: |
           export TZ='Asia/Shanghai'
           
@@ -81,9 +54,6 @@ jobs:
           current_year=$(date +%y)
           current_month=$(date +%-m)
           current_day=$(date +%-d)
-          
-          echo "当前日期: $current_date"
-          echo "年: $current_year, 月: $current_month, 日: $current_day"
           
           # 计算当日提交数量
           commit_count=$(git rev-list --count HEAD --since="$(date +%Y-%m-%d) 00:00:00" 2>/dev/null || echo "0")
@@ -105,88 +75,48 @@ jobs:
             version="$version_base"
           fi
           
-          echo "生成版本号: $version"
+          echo "版本号: $version"
           
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "commit_count=$commit_count" >> $GITHUB_OUTPUT
       
-      - name: Check Secret Availability
-        id: check
+      - id: check
         run: |
-          echo "检查可用密钥..."
-          
-          if [ -n "${{ secrets.LANZOU_ID }}" ] && [ -n "${{ secrets.LANZOU_PSD }}" ]; then
+          if [ -n "${{ secrets.LANZOU_ID }}" ]; then
             echo "lanzou=yes" >> $GITHUB_OUTPUT
-            echo "蓝奏云密钥可用"
-          else
-            echo "lanzou=no" >> $GITHUB_OUTPUT
-            echo "蓝奏云密钥不可用"
           fi
-          
-          if [ -n "${{ secrets.BOT_TOKEN }}" ] && [ -n "${{ secrets.CHANNEL_ID }}" ]; then
+          if [ -n "${{ secrets.BOT_TOKEN }}" ]; then
             echo "telegram=yes" >> $GITHUB_OUTPUT
-            echo "Telegram密钥可用"
-          else
-            echo "telegram=no" >> $GITHUB_OUTPUT
-            echo "Telegram密钥不可用"
           fi
-          
           if [ -n "${{ secrets.GITEE_TOKEN }}" ]; then
             echo "gitee=yes" >> $GITHUB_OUTPUT
-            echo "Gitee密钥可用"
-          else
-            echo "gitee=no" >> $GITHUB_OUTPUT
-            echo "Gitee密钥不可用"
           fi
-          
           if [ -n "${{ secrets.S_GITHUB_TOKEN }}" ]; then
             echo "sgithub=yes" >> $GITHUB_OUTPUT
-            echo "其他GitHub仓库密钥可用"
-          else
-            echo "sgithub=no" >> $GITHUB_OUTPUT
-            echo "其他GitHub仓库密钥不可用"
           fi
       
-      - name: Generate Update Log
-        id: updateLog
+      - id: updateLog
         run: |
-          echo "生成更新日志..."
-          
-          # 获取更深的提交历史
-          git fetch --unshallow --depth=50 origin main 2>/dev/null || git fetch --depth=50 origin main 2>/dev/null || true
-          
+          git fetch --unshallow --depth=20 origin main 2>/dev/null || git fetch --depth=20 origin main 2>/dev/null || true
           UPDATED_CONTENT=""
           IS_MERGE_PR=false
           COMMIT_MSG="${GITHUB_EVENT_HEAD_COMMIT_MESSAGE:-}"
           
-          echo "提交信息: $COMMIT_MSG"
-          
-          # 检查是否为合并提交
           if [[ -n "$COMMIT_MSG" ]]; then
             if [[ "$COMMIT_MSG" =~ ^"Merge pull request" ]] || 
-               [[ "$COMMIT_MSG" =~ ^"Merge branch" ]] || 
-               [[ "$COMMIT_MSG" =~ ^"Sync upstream" ]]; then
+              [[ "$COMMIT_MSG" =~ ^"Merge branch" ]] || 
+              [[ "$COMMIT_MSG" =~ ^"Sync upstream" ]]; then
               IS_MERGE_PR=true
-              echo "检测到合并提交"
             fi
           fi
           
-          # 检查文件变化
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
-          echo "变更文件:"
-          echo "$CHANGED_FILES"
-          
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null)
           UPDATE_LOG_CHANGED=$(echo "$CHANGED_FILES" | grep -q "app/src/main/assets/updateLog.md" && echo "yes" || echo "no")
           CRONET_JSON_CHANGED=$(echo "$CHANGED_FILES" | grep -q "app/src/main/assets/cronet.json" && echo "yes" || echo "no")
           
-          echo "updateLog.md 是否变更: $UPDATE_LOG_CHANGED"
-          echo "cronet.json 是否变更: $CRONET_JSON_CHANGED"
-          
           if [ "$UPDATE_LOG_CHANGED" = "yes" ] && [ "$CRONET_JSON_CHANGED" = "no" ]; then
-            echo "检测到更新日志变更"
             echo "updated=yes" >> $GITHUB_OUTPUT
             if [ -f "app/src/main/assets/updateLog.md" ]; then
-              echo "读取 updateLog.md 内容"
               UPDATED_CONTENT=$(awk '
               /^\*\*20/ && !found {
                 found=1
@@ -203,19 +133,15 @@ jobs:
               ' app/src/main/assets/updateLog.md)
             fi
           elif [ "$IS_MERGE_PR" = true ]; then
-            echo "使用合并提交信息作为更新日志"
             UPDATED_CONTENT="$COMMIT_MSG"
           else
-            echo "从提交历史生成更新日志"
             if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
               COMMIT_RANGE="${{ github.event.before }}..${{ github.event.after }}"
               if git rev-parse "$COMMIT_RANGE" >/dev/null 2>&1; then
-                UPDATED_CONTENT=$(git log $COMMIT_RANGE --pretty=format:"• %s (%h)" --reverse 2>/dev/null | grep -v "^• Merge" || echo "• $COMMIT_MSG")
+                UPDATED_CONTENT=$(git log $COMMIT_RANGE --pretty=format:"• %s" --reverse 2>/dev/null | grep -v "^• Merge" || echo "• $COMMIT_MSG")
               else
-                UPDATED_CONTENT=$(git log -15 --pretty=format:"• %s (%h)" --reverse 2>/dev/null | grep -v "^• Merge")
+                UPDATED_CONTENT=$(git log -10 --pretty=format:"• %s (%h)" --reverse 2>/dev/null | grep -v "^• Merge")
               fi
-            else
-              UPDATED_CONTENT=$(git log -15 --pretty=format:"• %s (%h)" --reverse 2>/dev/null | grep -v "^• Merge")
             fi
           fi
           
@@ -223,128 +149,19 @@ jobs:
             UPDATED_CONTENT=$(git log -1 --pretty=%B)
           fi
           
-          echo "更新内容:"
-          echo "$UPDATED_CONTENT"
-          
-          # 安全地转换为 JSON
-          CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"更新内容生成失败，请查看提交历史\"")
+          CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"Error generating update content\"")
           echo "body=$CONTENT_JSON" >> $GITHUB_OUTPUT
       
-      - name: Determine Build Matrix
-        id: set-matrix
+      - id: set-matrix
         run: |
-          echo "确定构建矩阵..."
           if [ "${{ steps.updateLog.outputs.updated }}" == "yes" ]; then
             echo 'build_matrix={"product":["app"],"type":["release","releaseS"]}' >> $GITHUB_OUTPUT
-            echo "构建矩阵: 包含原包名和共存版"
           else
             echo 'build_matrix={"product":["app"],"type":["release"]}' >> $GITHUB_OUTPUT
-            echo "构建矩阵: 仅包含原包名"
           fi
-
-  analyze-project:
-    needs: prepare
-    runs-on: ubuntu-latest
-    outputs:
-      package_name: ${{ steps.analyze.outputs.package_name }}
-      custom_views_exist: ${{ steps.analyze.outputs.custom_views_exist }}
-      data_binding_enabled: ${{ steps.analyze.outputs.data_binding_enabled }}
-      project_structure: ${{ steps.analyze.outputs.project_structure }}
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      
-      - name: Analyze Project Structure
-        id: analyze
-        run: |
-          echo "=== 分析项目结构 ==="
-          
-          # 1. 获取包名
-          PACKAGE_NAME=""
-          
-          # 从 build.gradle 获取 applicationId
-          if [ -f "app/build.gradle" ]; then
-            echo "检查 app/build.gradle..."
-            APP_ID=$(grep -E "applicationId.*=.*" app/build.gradle | head -1 | sed -E 's/.*["'\'']([^"'\'']+)["'\''].*/\1/' | tr -d '\r' || true)
-            NAMESPACE=$(grep -E "namespace.*=.*" app/build.gradle | head -1 | sed -E 's/.*["'\'']([^"'\'']+)["'\''].*/\1/' | tr -d '\r' || true)
-            
-            if [ -n "$APP_ID" ]; then
-              PACKAGE_NAME="$APP_ID"
-              echo "从 applicationId 获取包名: $PACKAGE_NAME"
-            elif [ -n "$NAMESPACE" ]; then
-              PACKAGE_NAME="$NAMESPACE"
-              echo "从 namespace 获取包名: $PACKAGE_NAME"
-            fi
-          fi
-          
-          # 从 AndroidManifest.xml 获取包名
-          if [ -z "$PACKAGE_NAME" ] && [ -f "app/src/main/AndroidManifest.xml" ]; then
-            echo "检查 AndroidManifest.xml..."
-            MANIFEST_PACKAGE=$(grep -E "package=.*" app/src/main/AndroidManifest.xml | head -1 | sed -E 's/.*package="([^"]+)".*/\1/' | tr -d '\r' || true)
-            if [ -n "$MANIFEST_PACKAGE" ]; then
-              PACKAGE_NAME="$MANIFEST_PACKAGE"
-              echo "从 AndroidManifest.xml 获取包名: $PACKAGE_NAME"
-            fi
-          fi
-          
-          # 从源代码推断包名
-          if [ -z "$PACKAGE_NAME" ]; then
-            echo "从源代码推断包名..."
-            SOURCE_FILE=$(find app/src/main/java -name "*.java" -o -name "*.kt" | head -1)
-            if [ -n "$SOURCE_FILE" ]; then
-              SOURCE_PACKAGE=$(grep -E "^package.*" "$SOURCE_FILE" | head -1 | sed -E 's/package\s+([^;]+);.*/\1/' | tr -d '\r' || true)
-              if [ -n "$SOURCE_PACKAGE" ]; then
-                PACKAGE_NAME="$SOURCE_PACKAGE"
-                echo "从源代码获取包名: $PACKAGE_NAME"
-              fi
-            fi
-          fi
-          
-          # 默认包名
-          if [ -z "$PACKAGE_NAME" ]; then
-            PACKAGE_NAME="com.gedoor.legado"
-            echo "使用默认包名: $PACKAGE_NAME"
-          fi
-          
-          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          
-          # 2. 检查自定义视图是否存在
-          CUSTOM_VIEWS_EXIST="no"
-          for view in ThemeRadioNoButton ChineseConverter DetailSeekBar SmoothCheckBox StrokeTextView TitleBar; do
-            if find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.xml" \) -exec grep -l "$view" {} \; 2>/dev/null | head -1; then
-              CUSTOM_VIEWS_EXIST="yes"
-              echo "找到自定义视图: $view"
-              break
-            fi
-          done
-          
-          echo "custom_views_exist=$CUSTOM_VIEWS_EXIST" >> $GITHUB_OUTPUT
-          
-          # 3. 检查数据绑定是否启用
-          DATA_BINDING_ENABLED="no"
-          if [ -f "app/build.gradle" ]; then
-            if grep -q "dataBinding.*enabled.*true" app/build.gradle || grep -q "buildFeatures.*dataBinding.*true" app/build.gradle; then
-              DATA_BINDING_ENABLED="yes"
-              echo "数据绑定已启用"
-            fi
-          fi
-          
-          echo "data_binding_enabled=$DATA_BINDING_ENABLED" >> $GITHUB_OUTPUT
-          
-          # 4. 分析项目结构
-          echo "项目结构:"
-          echo "  app/ 目录: $(find app -type f -name "*.java" -o -name "*.kt" -o -name "*.xml" | wc -l) 个文件"
-          echo "  布局文件: $(find app -name "*.xml" -type f | wc -l) 个"
-          echo "  Java 文件: $(find app -name "*.java" -type f | wc -l) 个"
-          echo "  Kotlin 文件: $(find app -name "*.kt" -type f | wc -l) 个"
-          
-          PROJECT_STRUCTURE=$(echo "{\"java_files\": $(find app -name "*.java" -type f | wc -l), \"kotlin_files\": $(find app -name "*.kt" -type f | wc -l), \"xml_files\": $(find app -name "*.xml" -type f | wc -l)}" | jq -c . 2>/dev/null || echo "{}")
-          echo "project_structure=$PROJECT_STRUCTURE" >> $GITHUB_OUTPUT
 
   build:
-    needs: [prepare, analyze-project]
+    needs: prepare
     strategy:
       matrix: ${{ fromJson(needs.prepare.outputs.build_matrix) }}
       fail-fast: false
@@ -354,128 +171,40 @@ jobs:
       type: ${{ matrix.type }}
       VERSION: ${{ needs.prepare.outputs.version }}
       COMMIT_COUNT: ${{ needs.prepare.outputs.commit_count }}
-      PACKAGE_NAME: ${{ needs.analyze-project.outputs.package_name }}
-      CUSTOM_VIEWS_EXIST: ${{ needs.analyze-project.outputs.custom_views_exist }}
-      DATA_BINDING_ENABLED: ${{ needs.analyze-project.outputs.data_binding_enabled }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       
-      - name: Setup JDK 21
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
-          cache: 'gradle'
       
-      - name: Show Environment Variables
+      - name: Clear 18PlusList.txt
         run: |
-          echo "=== 环境变量 ==="
-          echo "产品: ${{ env.product }}"
-          echo "类型: ${{ env.type }}"
-          echo "版本: ${{ env.VERSION }}"
-          echo "提交计数: ${{ env.COMMIT_COUNT }}"
-          echo "包名: ${{ env.PACKAGE_NAME }}"
-          echo "自定义视图存在: ${{ env.CUSTOM_VIEWS_EXIST }}"
-          echo "数据绑定启用: ${{ env.DATA_BINDING_ENABLED }}"
-          echo "工作空间: $GITHUB_WORKSPACE"
-          echo "Java 主页: $JAVA_HOME"
+          echo "清空18PlusList.txt"
+          echo "">$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt
       
-      - name: Clean 18PlusList.txt
+      - name: Release Apk Sign
         run: |
-          echo "清空 18PlusList.txt"
-          if [ -f "$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt" ]; then
-            echo "" > "$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt"
-            echo "已清空 18PlusList.txt"
-          else
-            echo "18PlusList.txt 不存在，创建空文件"
-            mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets"
-            echo "" > "$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt"
-          fi
-      
-      - name: Setup APK Signing
-        run: |
-          echo "设置 APK 签名"
-          
-          # 复制签名文件
-          if [ -f "$GITHUB_WORKSPACE/.github/workflows/legado.jks" ]; then
-            cp "$GITHUB_WORKSPACE/.github/workflows/legado.jks" "$GITHUB_WORKSPACE/app/legado.jks"
-            echo "已复制签名文件"
-          else
-            echo "警告: 签名文件不存在，创建临时签名"
-            # 创建临时签名文件（仅用于测试）
-            keytool -genkeypair \
-              -alias legado \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass gedoor_legado \
-              -keypass gedoor_legado \
-              -keystore "$GITHUB_WORKSPACE/app/legado.jks" \
-              -dname "CN=Legado, OU=Gedoor, O=Legado, L=Beijing, ST=Beijing, C=CN" \
-              -storetype JKS 2>/dev/null || echo "创建临时签名失败，继续构建"
-          fi
-          
-          # 添加 gradle.properties 配置
-          cat >> "$GITHUB_WORKSPACE/gradle.properties" << EOF
+          echo "给apk增加签名"
+          cp $GITHUB_WORKSPACE/.github/workflows/legado.jks $GITHUB_WORKSPACE/app/legado.jks
+          cat >> $GITHUB_WORKSPACE/gradle.properties << EOF
           RELEASE_STORE_FILE=./legado.jks
           RELEASE_KEY_ALIAS=legado
           RELEASE_STORE_PASSWORD=gedoor_legado
           RELEASE_KEY_PASSWORD=gedoor_legado
           EOF
-          
-          echo "签名配置完成"
-      
-      - name: Fix Package Name Issues
-        if: env.PACKAGE_NAME != 'com.eggreader.app' && env.CUSTOM_VIEWS_EXIST == 'yes'
-        run: |
-          echo "=== 修复包名问题 ==="
-          echo "当前包名: ${{ env.PACKAGE_NAME }}"
-          echo "需要修复的包名: com.eggreader.app"
-          
-          if [ "${{ env.PACKAGE_NAME }}" != "com.eggreader.app" ]; then
-            echo "检测到包名不匹配，修复布局文件中的包名引用..."
-            
-            # 查找并修复所有 XML 文件中的包名
-            find "$GITHUB_WORKSPACE" -name "*.xml" -type f | while read -r xml_file; do
-              if grep -q "com\.eggreader\.app" "$xml_file" 2>/dev/null; then
-                echo "修复文件: $xml_file"
-                # 安全地替换包名
-                sed -i.bak "s|com\.eggreader\.app|${{ env.PACKAGE_NAME }}|g" "$xml_file" 2>/dev/null || true
-                # 清理备份文件
-                rm -f "${xml_file}.bak" 2>/dev/null || true
-              fi
-            done
-            
-            echo "包名修复完成"
-            
-            # 清理之前生成的数据绑定文件
-            if [ -d "$GITHUB_WORKSPACE/app/build" ]; then
-              echo "清理生成的文件..."
-              rm -rf "$GITHUB_WORKSPACE/app/build/generated" 2>/dev/null || true
-              rm -rf "$GITHUB_WORKSPACE/app/build/intermediates" 2>/dev/null || true
-              rm -rf "$GITHUB_WORKSPACE/app/build/tmp" 2>/dev/null || true
-            fi
-          else
-            echo "包名匹配，无需修复"
-          fi
       
       - name: Add Essential ProGuard Rules
         run: |
-          echo "添加必要的 ProGuard 规则"
-          
-          # 备份原始文件
-          if [ -f "$GITHUB_WORKSPACE/app/proguard-rules.pro" ]; then
-            cp "$GITHUB_WORKSPACE/app/proguard-rules.pro" "$GITHUB_WORKSPACE/app/proguard-rules.pro.bak"
-          fi
-          
-          # 添加 ProGuard 规则
-          cat >> "$GITHUB_WORKSPACE/app/proguard-rules.pro" << 'EOF'
+          echo "添加必要的ProGuard规则以解决R8编译错误"
+          cat >> $GITHUB_WORKSPACE/app/proguard-rules.pro << 'EOF'
           
           # ===================================================
-          # Cronet 网络库规则 - 解决 R8 缺失类错误
+          # Cronet网络库规则 - 解决R8缺失类错误
           # ===================================================
           
           -keep class org.chromium.net.** { *; }
@@ -522,14 +251,14 @@ jobs:
           }
           
           # ===================================================
-          # Hutool 加密库规则 - 解决 NoSuchAlgorithmException
+          # Hutool加密库规则 - 解决NoSuchAlgorithmException
           # ===================================================
           
           -keep class cn.hutool.** { *; }
           -keep class cn.hutool.crypto.** { *; }
           -keep class cn.hutool.core.codec.** { *; }
           
-          # 保留 BouncyCastle 加密提供者
+          # 保留BouncyCastle加密提供者
           -keep class org.bouncycastle.** { *; }
           -keep class org.spongycastle.** { *; }
           
@@ -542,7 +271,7 @@ jobs:
           -keep class javax.crypto.** { *; }
           -keep class javax.security.** { *; }
           
-          # 保留 MessageDigest 相关类
+          # 保留MessageDigest相关类
           -keep class * extends java.security.MessageDigest {
             *;
           }
@@ -558,61 +287,22 @@ jobs:
           -dontwarn javax.security.**
           
           # ===================================================
-          # 数据绑定相关规则
-          # ===================================================
-          
-          -keep class **.databinding.** { *; }
-          -keep class **.DataBinderMapper { *; }
-          -keep class **.DataBinderMapperImpl { *; }
-          -keep class **.BR { *; }
-          
-          # 保留所有绑定适配器
-          -keep class * extends android.databinding.ViewDataBinding {
-            *;
-          }
-          
-          # ===================================================
-          # 自定义视图规则
-          # ===================================================
-          
-          -keep class * extends android.view.View {
-            public <init>(android.content.Context);
-            public <init>(android.content.Context, android.util.AttributeSet);
-            public <init>(android.content.Context, android.util.AttributeSet, int);
-            public void set*(***);
-            public *** get*();
-          }
-          
-          # 保留 Theme 相关视图
-          -keep class *Theme* { *; }
-          -keep class *theme* { *; }
-          
-          # 保留自定义组件
-          -keep class *Button { *; }
-          -keep class *TextView { *; }
-          -keep class *EditText { *; }
-          -keep class *ImageView { *; }
-          -keep class *View { *; }
-          -keep class *Layout { *; }
-          -keep class *Bar { *; }
-          
-          # ===================================================
           # 通用保留规则
           # ===================================================
           
-          # 保留所有 native 方法
+          # 保留所有native方法
           -keepclasseswithmembernames class * {
             native <methods>;
           }
           
-          # 保留自定义 View 的构造方法
+          # 保留自定义View的构造方法
           -keepclasseswithmembers class * extends android.view.View {
             public <init>(android.content.Context);
             public <init>(android.content.Context, android.util.AttributeSet);
             public <init>(android.content.Context, android.util.AttributeSet, int);
           }
           
-          # 保留 Activity 中的方法（避免空指针异常）
+          # 保留Activity中的方法（避免空指针异常）
           -keepclassmembers class * extends android.app.Activity {
             public void *(android.view.View);
           }
@@ -623,12 +313,12 @@ jobs:
             public static ** valueOf(java.lang.String);
           }
           
-          # 保留 Parcelable 序列化类
+          # 保留Parcelable序列化类
           -keep class * implements android.os.Parcelable {
             public static final android.os.Parcelable$Creator *;
           }
           
-          # 保留 Serializable 序列化类
+          # 保留Serializable序列化类
           -keepnames class * implements java.io.Serializable
           -keepclassmembers class * implements java.io.Serializable {
             static final long serialVersionUID;
@@ -639,7 +329,7 @@ jobs:
             java.lang.Object readResolve();
           }
           
-          # 保留 R 文件
+          # 保留R文件
           -keep class **.R$* {
             *;
           }
@@ -648,7 +338,7 @@ jobs:
           # 反射相关保留规则
           # ===================================================
           
-          # 保留被 @Keep 注解的类
+          # 保留被@Keep注解的类
           -keep @androidx.annotation.Keep class * { *; }
           -keep @android.support.annotation.Keep class * { *; }
           
@@ -659,239 +349,124 @@ jobs:
           }
           
           # 保留类中的注解
-          -keepattributes *Annotation*, InnerClasses, Signature, EnclosingMethod, RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations
+          -keepattributes *Annotation*, InnerClasses, Signature, EnclosingMethod
           
           EOF
-          
-          echo "ProGuard 规则添加完成"
+          echo "ProGuard规则添加完成"
       
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-        with:
-          cache-read-only: false
-          cache-cleanup: always
-          dependency-graph: disabled
       
-      - name: Prepare Build Configuration
+      - name: Build With Gradle
+        continue-on-error: true
         run: |
-          echo "=== 准备构建配置 ==="
-          
-          # 设置类型名称
           if [ "${{ env.type }}" == 'release' ]; then
             typeName="原包名"
-            echo "构建类型: 原包名"
           else
             typeName="共存"
-            echo "构建类型: 共存"
-            
-            # 修改 build.gradle 以支持共存版本
-            if [ -f "$GITHUB_WORKSPACE/app/build.gradle" ]; then
-              echo "修改 build.gradle 以支持共存版本"
-              sed -i.bak "s/\.release'/\.releaseS'/" "$GITHUB_WORKSPACE/app/build.gradle"
-              rm -f "$GITHUB_WORKSPACE/app/build.gradle.bak" 2>/dev/null || true
-            fi
+            sed "s/'.release'/'.releaseS'/" $GITHUB_WORKSPACE/app/build.gradle  -i
           fi
           
-          # 统一版本号
           echo "统一版本号为: ${{ env.VERSION }}"
-          if [ -f "$GITHUB_WORKSPACE/app/build.gradle" ]; then
-            # 更精确地替换版本号
-            sed -i.bak "s/def version = \".*\"/def version = \"${{ env.VERSION }}\"/" "$GITHUB_WORKSPACE/app/build.gradle"
-            rm -f "$GITHUB_WORKSPACE/app/build.gradle.bak" 2>/dev/null || true
-            
-            # 验证版本号是否设置成功
-            grep -n "def version = " "$GITHUB_WORKSPACE/app/build.gradle" || echo "警告: 未找到版本号定义"
-          fi
+          sed "/def version/c def version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
           
-          # 确保 gradlew 有执行权限
-          chmod +x gradlew 2>/dev/null || true
+          echo "开始${{ env.product }}$typeName构建"
+          chmod +x gradlew
           
-          echo "构建配置完成"
-      
-      - name: Clean Build Directory
-        run: |
-          echo "清理构建目录"
-          ./gradlew clean 2>&1 | tail -50 || echo "清理完成"
-      
-      - name: Build with Gradle
-        id: gradle-build
-        run: |
-          echo "=== 开始构建 ==="
-          echo "构建命令: ./gradlew assemble${{ env.product }}${{ env.type }}"
-          
-          # 设置构建参数
-          BUILD_ARGS="assemble${{ env.product }}${{ env.type }}"
-          BUILD_OPTIONS="--build-cache --parallel --daemon --warning-mode all --stacktrace"
-          
-          echo "执行构建: ./gradlew $BUILD_ARGS $BUILD_OPTIONS"
-          
-          # 第一次构建尝试
-          if ./gradlew $BUILD_ARGS $BUILD_OPTIONS; then
-            echo "✅ 构建成功"
-            echo "build_status=success" >> $GITHUB_OUTPUT
+          echo "构建命令: ./gradlew assemble${{ env.product }}release"
+          if ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all; then
+            echo "构建成功"
+            build_success=true
           else
-            echo "❌ 第一次构建失败，尝试修复后重新构建"
+            echo "构建失败"
+            build_success=false
             
-            # 检查是否有 missing_rules.txt
-            MISSING_RULES_FILE=$(find "$GITHUB_WORKSPACE/app/build/outputs/mapping" -name "missing_rules.txt" 2>/dev/null | head -1)
-            if [ -f "$MISSING_RULES_FILE" ]; then
-              echo "找到 missing_rules.txt，应用缺失规则..."
-              cat "$MISSING_RULES_FILE" >> "$GITHUB_WORKSPACE/app/proguard-rules.pro"
+            if [ -f "$GITHUB_WORKSPACE/app/build/outputs/mapping/*/missing_rules.txt" ]; then
+              echo "找到missing_rules.txt，应用缺失规则..."
+              cat $GITHUB_WORKSPACE/app/build/outputs/mapping/*/missing_rules.txt >> $GITHUB_WORKSPACE/app/proguard-rules.pro
               
-              echo "清理并重新构建..."
+              echo "清理并重新尝试构建..."
               ./gradlew clean
               
-              if ./gradlew $BUILD_ARGS $BUILD_OPTIONS; then
-                echo "✅ 重新构建成功"
-                echo "build_status=success" >> $GITHUB_OUTPUT
+              if ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all; then
+                echo "重新构建成功"
+                build_success=true
               else
-                echo "❌ 重新构建失败"
-                echo "build_status=failed" >> $GITHUB_OUTPUT
-                exit 1
+                echo "重新构建失败"
+                build_success=false
               fi
-            else
-              echo "未找到 missing_rules.txt，构建失败"
-              echo "build_status=failed" >> $GITHUB_OUTPUT
-              exit 1
             fi
           fi
+          
+          if [ "$build_success" = true ]; then
+            echo "修改APK文件名，使用新版本号格式"
+            mkdir -p ${{ github.workspace }}/apk/
+            
+            for file in `ls ${{ github.workspace }}/app/build/outputs/apk/*/*/*.apk 2>/dev/null || true`; do
+              if [ "${{ env.type }}" == 'release' ]; then
+                mv "$file" ${{ github.workspace }}/apk/legado_${{ env.VERSION }}_$typeName.apk
+              else
+                mv "$file" ${{ github.workspace }}/apk/legado_${{ env.VERSION }}_$typeName.apk
+              fi
+            done
+            
+            echo "移动mapping文件"
+            mkdir -p ${{ github.workspace }}/mapping/
+            for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt 2>/dev/null || true`; do
+              mv "$file" ${{ github.workspace }}/mapping/mapping.txt
+            done
+          else
+            echo "构建失败，跳过文件移动"
+          fi
       
-      - name: Process Build Artifacts
-        if: steps.gradle-build.outputs.build_status == 'success'
+      - name: Move Missing Rules Files
         run: |
-          echo "=== 处理构建产物 ==="
-          
-          # 创建输出目录
-          mkdir -p "$GITHUB_WORKSPACE/apk" "$GITHUB_WORKSPACE/mapping"
-          
-          # 设置类型名称
-          if [ "${{ env.type }}" == 'release' ]; then
-            typeName="原包名"
-          else
-            typeName="共存"
-          fi
-          
-          # 查找并移动 APK 文件
-          echo "查找 APK 文件..."
-          APK_FILES=$(find "$GITHUB_WORKSPACE/app/build/outputs/apk" -name "*.apk" -type f 2>/dev/null || true)
-          
-          if [ -z "$APK_FILES" ]; then
-            echo "未找到 APK 文件，检查其他位置..."
-            # 尝试其他可能的路径
-            APK_FILES=$(find "$GITHUB_WORKSPACE/app/build" -name "*.apk" -type f 2>/dev/null || true)
-          fi
-          
-          if [ -n "$APK_FILES" ]; then
-            echo "找到 APK 文件:"
-            echo "$APK_FILES"
-            
-            # 移动 APK 文件
-            for apk_file in $APK_FILES; do
-              if [ -f "$apk_file" ]; then
-                filename=$(basename "$apk_file")
-                new_name="legado_${{ env.VERSION }}_${typeName}.apk"
-                mv "$apk_file" "$GITHUB_WORKSPACE/apk/$new_name"
-                echo "移动: $filename -> $new_name"
-              fi
-            done
-          else
-            echo "警告: 未找到任何 APK 文件"
-          fi
-          
-          # 查找并移动 mapping 文件
-          echo "查找 mapping 文件..."
-          MAPPING_FILES=$(find "$GITHUB_WORKSPACE/app/build/outputs/mapping" -name "mapping.txt" -type f 2>/dev/null || true)
-          
-          if [ -n "$MAPPING_FILES" ]; then
-            echo "找到 mapping 文件:"
-            echo "$MAPPING_FILES"
-            
-            for mapping_file in $MAPPING_FILES; do
-              if [ -f "$mapping_file" ]; then
-                mv "$mapping_file" "$GITHUB_WORKSPACE/mapping/mapping.txt"
-                echo "移动 mapping 文件"
-                break
-              fi
-            done
-          fi
-          
-          # 查找并移动 missing_rules 文件
-          echo "查找 missing_rules 文件..."
-          MISSING_RULES_FILES=$(find "$GITHUB_WORKSPACE/app/build/outputs/mapping" -name "missing_rules.txt" -type f 2>/dev/null || true)
-          
-          if [ -n "$MISSING_RULES_FILES" ]; then
-            echo "找到 missing_rules 文件:"
-            echo "$MISSING_RULES_FILES"
-            
-            for missing_file in $MISSING_RULES_FILES; do
-              if [ -f "$missing_file" ]; then
-                mv "$missing_file" "$GITHUB_WORKSPACE/mapping/missing_rules.txt"
-                echo "移动 missing_rules 文件"
-                break
-              fi
-            done
-          fi
-          
-          echo "构建产物处理完成"
-          echo "APK 目录内容:"
-          ls -la "$GITHUB_WORKSPACE/apk/" 2>/dev/null || echo "APK 目录为空"
-          echo "Mapping 目录内容:"
-          ls -la "$GITHUB_WORKSPACE/mapping/" 2>/dev/null || echo "Mapping 目录为空"
+          echo "移动missing_rules.txt文件"
+          mkdir -p ${{ github.workspace }}/mapping/
+          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null || true`; do
+            mv "$file" ${{ github.workspace }}/mapping/missing_rules.txt
+          done
       
-      - name: Upload Missing Rules Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Upload Missing Rules File To Artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: legado-${{ env.product }}-${{ env.type }}-missing-rules
-          path: ${{ github.workspace }}/mapping/missing_rules.txt
+          name: legado.${{ env.product }}.${{ env.type }}.mapping.missing_rules
           if-no-files-found: ignore
-          retention-days: 7
+          path: ${{ github.workspace }}/mapping/missing_rules.txt
       
-      - name: Check Build Artifacts
-        if: steps.gradle-build.outputs.build_status == 'success'
+      - name: Check Build production
         run: |
-          echo "=== 检查构建产物 ==="
-          
-          if [ ! -d "$GITHUB_WORKSPACE/apk" ]; then
-            echo "❌ 构建产物目录不存在"
+          if [ ! -d ${{ github.workspace }}/apk ]; then
+            echo "构建产物目录不存在! 检查gradle日志。"
             exit 1
           fi
-          
-          APK_COUNT=$(find "$GITHUB_WORKSPACE/apk" -name "*.apk" -type f 2>/dev/null | wc -l)
-          
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "❌ 未找到 APK 文件"
-            echo "检查构建日志和以下目录:"
-            find "$GITHUB_WORKSPACE/app/build" -type d -name "apk" 2>/dev/null || true
+          cd ${{ github.workspace }}/apk/
+          if [ ! -e legado_*.apk ]; then
+            echo "未找到构建产物APK文件! 检查gradle日志。"
             exit 1
           fi
-          
-          echo "✅ 找到 $APK_COUNT 个 APK 文件"
+          echo "找到构建产物:"
+          ls -la *.apk
           echo "版本号: ${{ env.VERSION }}"
           echo "当日提交次数: ${{ env.COMMIT_COUNT }}"
-          echo "APK 文件列表:"
-          ls -la "$GITHUB_WORKSPACE/apk/"*.apk 2>/dev/null || echo "无法列出 APK 文件"
       
-      - name: Upload APK Artifact
-        if: steps.gradle-build.outputs.build_status == 'success'
-        uses: actions/upload-artifact@v4
+      - name: Upload App To Artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: legado-${{ env.product }}-${{ env.type }}
-          path: ${{ github.workspace }}/apk/*.apk
-          if-no-files-found: error
-          retention-days: 7
-      
-      - name: Upload Mapping Artifact
-        if: steps.gradle-build.outputs.build_status == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: legado-${{ env.product }}-${{ env.type }}-mapping
-          path: ${{ github.workspace }}/mapping/mapping.txt
+          name: legado.${{ env.product }}.${{ env.type }}
           if-no-files-found: ignore
-          retention-days: 7
+          path: ${{ github.workspace }}/apk/*.apk
+      
+      - name: Upload Mapping File To Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: legado.${{ env.product }}.${{ env.type }}.mapping
+          if-no-files-found: ignore
+          path: ${{ github.workspace }}/mapping/mapping.txt
 
+  # GitHub发布 - 修复时间格式问题
   github-release:
-    needs: [prepare, build]
+    needs: [ prepare, build ]
     if: github.event_name != 'pull_request' && github.repository == 'mctiantian2501314/legado'
     runs-on: ubuntu-latest
     permissions:
@@ -899,42 +474,43 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 1
       
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
-          path: artifacts/
+          path: apk/
       
-      - name: Organize APK Files
+      - working-directory: apk/
         run: |
-          echo "整理 APK 文件..."
-          mkdir -p release_apks
+          # 移动所有APK文件到当前目录
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          # 删除空目录
+          find . -type d -empty -delete 2>/dev/null || true
           
-          # 收集所有 APK 文件
-          find artifacts -name "*.apk" -type f | while read -r apk_file; do
-            filename=$(basename "$apk_file")
-            echo "处理文件: $filename"
-            
-            # 重命名文件以便更好识别
-            if [[ "$filename" == *"原包名"* ]]; then
-              new_name="${filename//原包名/release}"
-            elif [[ "$filename" == *"共存"* ]]; then
-              new_name="${filename//共存/releaseS}"
-            else
-              new_name="$filename"
+          echo "整理APK文件，当前目录:"
+          ls -la
+          
+          # 重命名APK文件
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *原包名* ]]; then
+                new_name="${file//原包名/release}"
+                mv "$file" "$new_name"
+                echo "重命名: $file -> $new_name"
+              elif [[ "$file" == *共存* ]]; then
+                new_name="${file//共存/releaseS}"
+                mv "$file" "$new_name"
+                echo "重命名: $file -> $new_name"
+              fi
             fi
-            
-            cp "$apk_file" "release_apks/$new_name"
-            echo "复制: $filename -> $new_name"
           done
           
-          echo "整理后的 APK 文件:"
-          ls -la release_apks/ 2>/dev/null || echo "未找到 APK 文件"
+          echo "整理后的APK文件:"
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
+      # 生成构建时间（北京时间）
       - name: Generate Build Time
         id: build-time
         run: |
@@ -942,110 +518,78 @@ jobs:
           echo "BUILD_TIME=${BUILD_TIME}"
           echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
       
-      - name: Create GitHub Release
+      # 发布正式版本（如果有更新日志变化）
+      - name: Publish Official Release
         if: needs.prepare.outputs.updateLog_updated == 'yes'
         uses: softprops/action-gh-release@v2
         with:
-          name: Legado App ${{ env.VERSION }}
+          name: legado_app_${{ env.VERSION }}
           tag_name: ${{ env.VERSION }}
           body: |
-            ### 📱 版本信息
-            - **版本号**: ${{ env.VERSION }}
-            - **构建时间**: ${{ steps.build-time.outputs.build_time }}
-            - **当日提交序号**: ${{ needs.prepare.outputs.commit_count }}
-            - **分支**: ${{ needs.prepare.outputs.branch_name }}
-            - **提交**: ${{ needs.prepare.outputs.commit_hash }}
-            
-            ### 📝 更新内容
+            ### 更新内容
             ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
             
-            ### 📦 下载链接
-            请根据需求选择合适的版本下载：
-            - `release`: 原包名版本
-            - `releaseS`: 共存版本（可与其他版本同时安装）
-            
-            ### 🔧 构建配置
-            此版本使用以下配置构建：
-            - JDK: Temurin 21
-            - Gradle: 项目配置版本
-            - 构建系统: GitHub Actions
-            
-            ---
-            
-            *自动生成于 ${{ steps.build-time.outputs.build_time }}*
+            ### 版本信息
+            - 版本号: ${{ env.VERSION }}
+            - 构建时间: ${{ steps.build-time.outputs.build_time }}
+            - 当日提交序号: ${{ needs.prepare.outputs.commit_count }}
           prerelease: false
-          draft: false
-          files: release_apks/*.apk
+          files: ${{ github.workspace }}/apk/*.apk
           fail_on_unmatched_files: false
       
-      - name: Create Beta GitHub Release
+      # 发布测试版（如果没有更新日志变化）
+      - name: Publish Beta Release
         if: needs.prepare.outputs.updateLog_updated != 'yes'
         uses: softprops/action-gh-release@v2
         with:
-          name: Legado App Beta ${{ env.VERSION }}
+          name: legado_app_${{ env.VERSION }}
           tag_name: beta
           body: |
-            ### 📱 Beta 版本信息
-            - **版本号**: ${{ env.VERSION }}
-            - **构建时间**: ${{ steps.build-time.outputs.build_time }}
-            - **当日提交序号**: ${{ needs.prepare.outputs.commit_count }}
-            - **分支**: ${{ needs.prepare.outputs.branch_name }}
-            - **提交**: ${{ needs.prepare.outputs.commit_hash }}
-            - **注意**: 此为测试版本，可能包含未完全测试的功能
-            
-            ### 📝 更新内容
+            ### 更新内容
             ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
             
-            ### 📦 下载链接
-            请根据需求选择合适的版本下载：
-            - `release`: 原包名版本
-            - `releaseS`: 共存版本（可与其他版本同时安装）
-            
-            ### ⚠️ 测试版说明
-            此版本为自动构建的测试版，主要用于功能测试和问题发现。如果您遇到任何问题，请在仓库中提交 Issue。
-            
-            ---
-            
-            *自动生成于 ${{ steps.build-time.outputs.build_time }}*
+            ### 版本信息
+            - 版本号: ${{ env.VERSION }}
+            - 构建时间: ${{ steps.build-time.outputs.build_time }}
+            - 当日提交序号: ${{ needs.prepare.outputs.commit_count }}
+            - 注: 此为测试版
           prerelease: true
-          draft: false
-          files: release_apks/*.apk
+          files: ${{ github.workspace }}/apk/*.apk
           fail_on_unmatched_files: false
           overwrite: true
 
+  # Gitee发布 - 使用可靠的Action
   gitee-release:
-    needs: [prepare, build]
+    needs: [ prepare, build ]
     if: github.event_name != 'pull_request' && needs.prepare.outputs.gitee == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
-          path: gitee_artifacts/
+          path: apk-gitee/
       
-      - name: Organize APK Files for Gitee
+      - working-directory: apk-gitee/
         run: |
-          echo "整理 APK 文件用于 Gitee..."
-          mkdir -p gitee_release_apks
+          # 移动所有APK文件到当前目录
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          # 删除空目录
+          find . -type d -empty -delete 2>/dev/null || true
           
-          find gitee_artifacts -name "*.apk" -type f | while read -r apk_file; do
-            filename=$(basename "$apk_file")
-            echo "处理文件: $filename"
-            
-            if [[ "$filename" == *"原包名"* ]]; then
-              new_name="${filename//原包名/release}"
-            elif [[ "$filename" == *"共存"* ]]; then
-              new_name="${filename//共存/releaseS}"
-            else
-              new_name="$filename"
+          # 重命名APK文件
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *原包名* ]]; then
+                mv "$file" "${file//原包名/release}"
+              else
+                mv "$file" "${file//共存/releaseS}"
+              fi
             fi
-            
-            cp "$apk_file" "gitee_release_apks/$new_name"
           done
           
-          echo "Gitee 发布文件列表:"
-          ls -la gitee_release_apks/ 2>/dev/null || echo "未找到 APK 文件"
+          echo "Gitee上传文件列表:"
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
+      # 使用wearerequired/gitee-release替代yanglbme/gitee-upload-release-action
       - name: Generate Build Time for Gitee
         id: gitee-build-time
         run: |
@@ -1059,7 +603,7 @@ jobs:
         with:
           auth_token: ${{ secrets.GITEE_TOKEN }}
           tag_name: ${{ needs.prepare.outputs.updateLog_updated == 'yes' && needs.prepare.outputs.version || 'beta' }}
-          release_name: Legado App ${{ needs.prepare.outputs.version }}
+          release_name: legado_app_${{ needs.prepare.outputs.version }}
           body: |
             版本号: ${{ needs.prepare.outputs.version }}
             构建时间: ${{ steps.gitee-build-time.outputs.build_time }}
@@ -1070,12 +614,13 @@ jobs:
             
             ${{ needs.prepare.outputs.updateLog_updated != 'yes' && '注: 此为测试版' || '' }}
           prerelease: ${{ needs.prepare.outputs.updateLog_updated != 'yes' }}
-          files: gitee_release_apks/*.apk
+          files: apk-gitee/*.apk
           overwrite: true
 
+  # 蓝奏云上传
   lanzou:
-    needs: [prepare, build]
-    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes' && needs.prepare.outputs.updateLog_updated == 'yes' }}
+    needs: [ prepare, build ]
+    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes' }}
     runs-on: ubuntu-latest
     env:
       ylogin: ${{ secrets.LANZOU_ID }}
@@ -1083,78 +628,76 @@ jobs:
       LANZOU_FOLDER_ID: ${{ secrets.LANZOU_FOLDER_ID }}
       LANZOU_URL: ${{ secrets.LANZOU_URL }}
     steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
-          path: lanzou_apks/
+          path: apk/
       
-      - name: Prepare APKs for Lanzou
+      - working-directory: apk/
         run: |
-          echo "准备蓝奏云上传文件..."
-          mkdir -p upload_apks
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          find . -type d -empty -delete 2>/dev/null || true
           
-          # 只上传 release 版本到蓝奏云
-          find lanzou_apks -name "*原包名*.apk" -type f | head -1 | while read -r apk_file; do
-            if [ -f "$apk_file" ]; then
-              cp "$apk_file" "upload_apks/legado_${{ needs.prepare.outputs.version }}.apk"
-              echo "准备上传文件: legado_${{ needs.prepare.outputs.version }}.apk"
-            fi
-          done
-          
-          echo "上传文件列表:"
-          ls -la upload_apks/ 2>/dev/null || echo "未找到 APK 文件"
+          echo "蓝奏云上传文件列表:"
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
-      - name: Upload to Lanzou
+      - name: Upload To Lanzou
         continue-on-error: true
         timeout-minutes: 10
         run: |
-          if [ -n "$(ls -A upload_apks/*.apk 2>/dev/null || true)" ]; then
-            echo "开始上传到蓝奏云..."
-            python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "upload_apks/" "$LANZOU_FOLDER_ID"
-            echo "蓝奏云分享链接: $LANZOU_URL"
+          path="$GITHUB_WORKSPACE/apk/"
+          if [ -n "$(ls -A $path/*.apk 2>/dev/null || true)" ]; then
+            python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "$path" "$LANZOU_FOLDER_ID"
+            echo "[$(date -u -d '+8 hour' '+%Y.%m.%d %H:%M:%S')] 分享链接: $LANZOU_URL"
           else
-            echo "没有找到 APK 文件，跳过蓝奏云上传"
+            echo "没有找到APK文件，跳过蓝奏云上传"
           fi
 
+  # Telegram发布
   telegram:
     needs: [prepare, build]
     if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
-          path: telegram_apks/
+          path: apk/
       
-      - name: Prepare APKs for Telegram
-        id: prepare-telegram
+      - id: set-tags
+        working-directory: apk/
         run: |
-          echo "准备 Telegram 发布文件..."
-          mkdir -p telegram_files
+          find . -name "*.apk" -type f -exec mv {} . \; 2>/dev/null || true
+          find . -type d -empty -delete 2>/dev/null || true
           
           has_plus=false
-          for apk_file in telegram_apks/*/*.apk 2>/dev/null; do
-            if [ -f "$apk_file" ]; then
-              filename=$(basename "$apk_file")
-              if [[ "$filename" == *"共存"* ]]; then
-                has_plus=true
-                cp "$apk_file" "telegram_files/legado_plus_${{ needs.prepare.outputs.version }}.apk"
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *原包名* ]]; then
+                mv "$file" "${file//原包名/release}"
               else
-                cp "$apk_file" "telegram_files/legado_${{ needs.prepare.outputs.version }}.apk"
+                mv "$file" "${file//共存/releaseS}"
+                has_plus=true
               fi
             fi
           done
           
-          TAGS="#Legado #阅读"
+          tags=""
           if [ "$has_plus" = true ]; then
-            TAGS="$TAGS #Plus版"
+            tags="#beta #plus"
+          else
+            tags="#beta"
           fi
           
-          echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
-          echo "Telegram 文件列表:"
-          ls -la telegram_files/ 2>/dev/null || echo "未找到 APK 文件"
+          echo "TAGS=$tags" >> $GITHUB_OUTPUT
+          echo "Telegram发送文件列表:"
+          ls -la *.apk 2>/dev/null || echo "没有找到APK文件"
       
-      - name: Send to Telegram Channel
+      - name: Generate Build Time for Telegram
+        id: telegram-time
+        run: |
+          BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          echo "构建时间: ${BUILD_TIME}"
+      
+      - name: Post to channel
         continue-on-error: true
         timeout-minutes: 5
         uses: appleboy/telegram-action@master
@@ -1162,55 +705,46 @@ jobs:
           to: ${{ secrets.CHANNEL_ID }}
           token: ${{ secrets.BOT_TOKEN }}
           message: |
-            🚀 *Legado 阅读器更新*
-            
-            📅 版本: ${{ needs.prepare.outputs.version }}
-            🕐 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
-            
-            📋 *更新内容*:
+            版本号：${{ needs.prepare.outputs.version }}
+            构建时间：$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+            当日提交序号：${{ needs.prepare.outputs.commit_count }}
+            更新内容：
             ${{ fromJSON(needs.prepare.outputs.updateLog_content) }}
-            
-            📥 *下载链接*:
-            请从 GitHub Releases 页面下载
-            
-            ${{ steps.prepare-telegram.outputs.TAGS }}
+            #阅读 #Legado #阅读Sigma ${{ steps.set-tags.outputs.TAGS }}
           document: |
-            telegram_files/*.apk
-          parse_mode: markdown
+            apk/*.apk
 
+  # 同步到其他GitHub仓库
   update-storage:
     needs: [prepare, build]
-    if: github.event_name != 'pull_request' && needs.prepare.outputs.sgithub == 'yes' && needs.prepare.outputs.updateLog_updated == 'yes'
+    if: github.event_name != 'pull_request'&& needs.prepare.outputs.sgithub == 'yes' && needs.prepare.outputs.updateLog_updated == 'yes'
     runs-on: ubuntu-latest
     steps:
-      - name: Download ReleaseS Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
-          name: legado-app-releaseS
-          path: ./sigma_apks
+          name: legado.app.releaseS
+          path: ./apk-releaseS
       
-      - name: Check APK Exists
+      - name: Check releaseS APK exists
         id: check-apk
         run: |
-          if ls ./sigma_apks/*.apk 1> /dev/null 2>&1; then
-            echo "releaseS APK 存在"
+          if ls ./apk-releaseS/*.apk 1> /dev/null 2>&1; then
+            echo "releaseS APK found"
             echo "apk_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "releaseS APK 不存在"
+            echo "releaseS APK not found"
             echo "apk_exists=false" >> $GITHUB_OUTPUT
           fi
       
-      - name: Upload to Storage Repository
-        if: steps.check-apk.outputs.apk_exists == 'true'
+      - name: Upload to yuedu repository
         continue-on-error: true
+        if: steps.check-apk.outputs.apk_exists == 'true'
         run: |
-          echo "上传到存储仓库..."
-          
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           
           # 克隆目标仓库
-          git clone "https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git" yuedu-repo || {
+          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo || {
             echo "克隆仓库失败"
             exit 0
           }
@@ -1218,113 +752,68 @@ jobs:
           # 创建目录
           mkdir -p yuedu-repo/sigma
           
-          # 复制 APK 文件
-          for apk_file in ./sigma_apks/*.apk; do
+          # 复制releaseS APK文件并重命名
+          for apk_file in ./apk-releaseS/*.apk; do
             if [ -f "$apk_file" ]; then
-              cp "$apk_file" "yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk"
-              echo "复制文件: $(basename "$apk_file")"
+              cp "$apk_file" yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
+              echo "复制文件: $apk_file"
             fi
           done
           
-          cd yuedu-repo
-          
-          # 检查是否有变化
-          if git status --porcelain | grep -q sigma; then
-            echo "检测到文件变化，提交更改..."
+          # 检查是否有文件被复制
+          if [ -f "yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk" ]; then
+            cd yuedu-repo
             git add sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
-            git commit -m "更新 Legado Sigma 到版本 ${{ needs.prepare.outputs.version }} (当日第${{ needs.prepare.outputs.commit_count }}个提交)"
-            git push origin main || {
-              echo "推送失败"
-              exit 0
-            }
-            echo "✅ 更新完成"
+            
+            # 检查是否有变化
+            if git diff --cached --quiet; then
+              echo "没有变化需要提交"
+            else
+              git commit -m "Update legado Sigma to version ${{ needs.prepare.outputs.version }} (当日第${{ needs.prepare.outputs.commit_count }}个提交)"
+              git push || {
+                echo "推送失败"
+                exit 0
+              }
+              echo "✅ 更新完成"
+            fi
           else
-            echo "没有变化需要提交"
+            echo "没有找到APK文件"
           fi
 
+  # 清理步骤 - 删除所有构建产物
   cleanup:
     needs: [github-release, gitee-release, lanzou, telegram, update-storage]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Clean Up Workspace
+      - name: Clean up workspace
         run: |
-          echo "清理工作空间..."
+          echo "清理工作空间中的构建产物..."
           
-          # 删除所有构建产物目录
-          for dir in apk mapping release_apks gitee_release_apks upload_apks telegram_files sigma_apks artifacts gitee_artifacts lanzou_apks telegram_apks; do
+          # 删除APK文件
+          if [ -d "${{ github.workspace }}/apk" ]; then
+            rm -rf "${{ github.workspace }}/apk"
+            echo "已删除 ${{ github.workspace }}/apk"
+          fi
+          
+          # 删除mapping文件
+          if [ -d "${{ github.workspace }}/mapping" ]; then
+            rm -rf "${{ github.workspace }}/mapping"
+            echo "已删除 ${{ github.workspace }}/mapping"
+          fi
+          
+          # 删除其他可能存在的构建产物目录
+          for dir in apk-gitee apk-releaseS; do
             if [ -d "${{ github.workspace }}/$dir" ]; then
               rm -rf "${{ github.workspace }}/$dir"
-              echo "已删除 $dir"
+              echo "已删除 ${{ github.workspace }}/$dir"
             fi
           done
           
-          # 清理临时文件
-          find "${{ github.workspace }}" -name "*.bak" -type f -delete 2>/dev/null || true
+          # 清理gradle缓存
+          if [ -d "${{ github.workspace }}/.gradle" ]; then
+            rm -rf "${{ github.workspace }}/.gradle"
+            echo "已删除 ${{ github.workspace }}/.gradle"
+          fi
           
           echo "✅ 清理完成"
-
-  notify:
-    needs: [prepare, build, github-release, gitee-release, lanzou, telegram, update-storage]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Build Status Summary
-        run: |
-          echo "### 🏗️ 构建状态报告" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**版本**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**提交计数**: ${{ needs.prepare.outputs.commit_count }}" >> $GITHUB_STEP_SUMMARY
-          echo "**分支**: ${{ needs.prepare.outputs.branch_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**提交**: ${{ needs.prepare.outputs.commit_hash }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ needs.build.result }}" == "success" ]; then
-            echo "✅ **构建状态**: 成功" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **构建状态**: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          echo "#### 📋 发布状态" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ needs.github-release.result }}" == "success" ]; then
-            echo "✅ GitHub Release: 已发布" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.github-release.result }}" == "skipped" ]; then
-            echo "➖ GitHub Release: 已跳过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ GitHub Release: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ "${{ needs.gitee-release.result }}" == "success" ]; then
-            echo "✅ Gitee Release: 已发布" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.gitee-release.result }}" == "skipped" ]; then
-            echo "➖ Gitee Release: 已跳过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Gitee Release: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ "${{ needs.lanzou.result }}" == "success" ]; then
-            echo "✅ 蓝奏云: 已上传" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.lanzou.result }}" == "skipped" ]; then
-            echo "➖ 蓝奏云: 已跳过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ 蓝奏云: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ "${{ needs.telegram.result }}" == "success" ]; then
-            echo "✅ Telegram: 已发送" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.telegram.result }}" == "skipped" ]; then
-            echo "➖ Telegram: 已跳过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Telegram: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### 📝 更新内容" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "${{ fromJSON(needs.prepare.outputs.updateLog_content) }}" >> $GITHUB_STEP_SUMMARY
