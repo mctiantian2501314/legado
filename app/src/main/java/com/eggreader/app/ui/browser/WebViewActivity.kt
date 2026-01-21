@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.MotionEvent
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
@@ -67,18 +66,13 @@ import com.eggreader.app.help.webView.WebJsExtensions.Companion.JSBridgeResult
 import com.eggreader.app.utils.escapeForJs
 import com.eggreader.app.utils.NetworkUtils
 import com.eggreader.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import android.view.Gravity
-import android.view.WindowManager
-import android.view.ViewGroup
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
         // 是否输出日志
         var sessionShowWebLog = false
-        // 半屏模式参数
-        const val EXTRA_HALF_SCREEN = "half_screen"
     }
-//1
+
     private lateinit var pooledWebView: PooledWebView
     private lateinit var currentWebView: WebView
 
@@ -90,10 +84,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var isFullScreen = false
     private var isfullscreen = false
     private var needClearHistory = true
-    private var isHalfScreen = false
-    // 拖动调整大小相关变量
-    private var isResizing = false
-    private var lastY = 0f
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -106,12 +96,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        // 初始化半屏模式
-        isHalfScreen = intent.getBooleanExtra(EXTRA_HALF_SCREEN, false)
-        if (isHalfScreen) {
-            setupHalfScreenMode()
-        }
-
         // 使用WebView池获取WebView，优化性能
         pooledWebView = WebViewPool.acquire(this)
         currentWebView = pooledWebView.realWebView
@@ -255,30 +239,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         return super.onCompatOptionsItemSelected(item)
     }
 
-    // 设置半屏模式
-    private fun setupHalfScreenMode() {
-        val window = window
-        val params = window.attributes
-        params.gravity = Gravity.BOTTOM
-        params.width = WindowManager.LayoutParams.MATCH_PARENT
-        // 设置高度为屏幕高度的一半
-        val displayMetrics = resources.displayMetrics
-        params.height = (displayMetrics.heightPixels * 0.5f).toInt()
-        // 添加动画效果
-        params.windowAnimations = android.R.style.Animation_Translucent
-        window.attributes = params
-        
-        // 调整布局
-        binding.titleBar.visible()
-        binding.webViewContainer.layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
-        
-        // 添加顶部阴影效果，增强视觉层次感
-        binding.titleBar.elevation = 8f
-        
-        // 设置背景透明度，增强半屏效果
-        window.decorView.setBackgroundColor(android.graphics.Color.argb(240, 0, 0, 0))
-    }
-
     // 切换全屏模式
     private fun toggleFullScreen() {
         isFullScreen = !isFullScreen
@@ -388,7 +348,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                         "window.$JSBridgeResult('$id', '${data.escapeForJs()}', null);",
                         null
                     )
-                }.onError { 
+                }.onError {
                     ctx.currentWebView.evaluateJavascript(
                         "window.$JSBridgeResult('$id', null, '${it.localizedMessage?.escapeForJs()}');",
                         null
@@ -456,44 +416,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         super.onResume()
         currentWebView.resumeTimers()
         currentWebView.onResume()
-    }
-
-    // 处理触摸事件，实现拖动调整大小
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!isHalfScreen) return super.onTouchEvent(event)
-
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                // 只有在顶部区域的触摸才触发调整大小
-                if (event.y < 100) {
-                    isResizing = true
-                    lastY = event.rawY
-                }
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (isResizing) {
-                    val deltaY = lastY - event.rawY
-                    lastY = event.rawY
-                    
-                    // 调整窗口大小
-                    val window = window
-                    val params = window.attributes
-                    val newHeight = params.height + deltaY.toInt()
-                    
-                    // 限制最小高度
-                    val minHeight = resources.displayMetrics.heightPixels * 0.3f
-                    if (newHeight > minHeight) {
-                        params.height = newHeight
-                        window.attributes = params
-                    }
-                }
-            }
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> {
-                isResizing = false
-            }
-        }
-        return isResizing || super.onTouchEvent(event)
     }
 
     override fun onDestroy() {
