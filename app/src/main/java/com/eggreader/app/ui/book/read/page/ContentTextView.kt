@@ -25,6 +25,7 @@ import com.eggreader.app.ui.book.read.page.entities.column.TextBaseColumn
 import com.eggreader.app.ui.book.read.page.entities.column.TextColumn
 import com.eggreader.app.ui.book.read.page.provider.ChapterProvider
 import com.eggreader.app.ui.book.read.page.provider.TextPageFactory
+import com.eggreader.app.ui.browser.WebViewActivity
 import com.eggreader.app.ui.widget.dialog.PhotoDialog
 import com.eggreader.app.utils.activity
 import com.eggreader.app.utils.dpToPx
@@ -250,7 +251,25 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
 
                 is ReviewColumn -> {
-                    context.toastOnUi("Button Pressed!")
+                    // 启动半屏评论浏览器
+                    val book = ReadBook.book
+                    val chapter = ReadBook.curTextChapter?.chapter
+                    val bookSource = ReadBook.bookSource
+                    if (book != null && chapter != null && bookSource != null) {
+                        val reviewUrl = bookSource.ruleReview?.reviewUrl
+                        if (!reviewUrl.isNullOrBlank()) {
+                            activity?.startActivity<WebViewActivity> {
+                                putExtra("title", "章节评论")
+                                putExtra("url", reviewUrl)
+                                putExtra(WebViewActivity.EXTRA_HALF_SCREEN, true)
+                                putExtra("sourceOrigin", bookSource.bookSourceUrl)
+                                putExtra("sourceName", bookSource.bookSourceName)
+                                putExtra("sourceType", bookSource.bookSourceType)
+                            }
+                        } else {
+                            context.toastOnUi("该章节暂无评论")
+                        }
+                    }
                     handled = true
                 }
 
@@ -747,5 +766,9 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean
         fun clickImg(src: String)
     }
+}
+
+private fun String.getContentRule() {
+    TODO("Not yet implemented")
 }
 
