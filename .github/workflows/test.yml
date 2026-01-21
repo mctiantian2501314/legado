@@ -51,7 +51,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.ref }}
-
+      
       - name: Get Branch Name
         id: get-branch
         run: |
@@ -60,18 +60,18 @@ jobs:
           else
             echo "branch_name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
           fi
-
+      
       - name: Get Commit Hash
         id: get-commit
         run: |
           echo "commit_hash=${{ github.sha }}" >> $GITHUB_OUTPUT
-
+      
       - name: Setup Timezone
         run: |
           echo "Setting up Shanghai timezone"
           export TZ='Asia/Shanghai'
           echo "Current time: $(date)"
-
+      
       - name: Generate Version Number
         id: set-ver
         run: |
@@ -109,7 +109,7 @@ jobs:
           
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "commit_count=$commit_count" >> $GITHUB_OUTPUT
-
+      
       - name: Check Secret Availability
         id: check
         run: |
@@ -146,7 +146,7 @@ jobs:
             echo "sgithub=no" >> $GITHUB_OUTPUT
             echo "其他GitHub仓库密钥不可用"
           fi
-
+      
       - name: Generate Update Log
         id: updateLog
         run: |
@@ -229,7 +229,7 @@ jobs:
           # 安全地转换为 JSON
           CONTENT_JSON=$(echo "$UPDATED_CONTENT" | jq -Rs . 2>/dev/null || echo "\"更新内容生成失败，请查看提交历史\"")
           echo "body=$CONTENT_JSON" >> $GITHUB_OUTPUT
-
+      
       - name: Determine Build Matrix
         id: set-matrix
         run: |
@@ -255,7 +255,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
+      
       - name: Analyze Project Structure
         id: analyze
         run: |
@@ -269,7 +269,7 @@ jobs:
             echo "检查 app/build.gradle..."
             APP_ID=$(grep -E "applicationId.*=.*" app/build.gradle | head -1 | sed -E 's/.*["'\'']([^"'\'']+)["'\''].*/\1/' | tr -d '\r' || true)
             NAMESPACE=$(grep -E "namespace.*=.*" app/build.gradle | head -1 | sed -E 's/.*["'\'']([^"'\'']+)["'\''].*/\1/' | tr -d '\r' || true)
-          
+            
             if [ -n "$APP_ID" ]; then
               PACKAGE_NAME="$APP_ID"
               echo "从 applicationId 获取包名: $PACKAGE_NAME"
@@ -325,7 +325,7 @@ jobs:
           # 3. 检查数据绑定是否启用
           DATA_BINDING_ENABLED="no"
           if [ -f "app/build.gradle" ]; then
-            if grep -q "dataBinding.*=.*true" app/build.gradle || grep -q "dataBinding.*enabled.*true" app/build.gradle || grep -q "buildFeatures.*dataBinding.*true" app/build.gradle; then
+            if grep -q "dataBinding.*enabled.*true" app/build.gradle || grep -q "buildFeatures.*dataBinding.*true" app/build.gradle; then
               DATA_BINDING_ENABLED="yes"
               echo "数据绑定已启用"
             fi
@@ -362,15 +362,14 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
-
+      
       - name: Setup JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
           cache: 'gradle'
-
+      
       - name: Show Environment Variables
         run: |
           echo "=== 环境变量 ==="
@@ -383,7 +382,7 @@ jobs:
           echo "数据绑定启用: ${{ env.DATA_BINDING_ENABLED }}"
           echo "工作空间: $GITHUB_WORKSPACE"
           echo "Java 主页: $JAVA_HOME"
-
+      
       - name: Clean 18PlusList.txt
         run: |
           echo "清空 18PlusList.txt"
@@ -395,7 +394,7 @@ jobs:
             mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets"
             echo "" > "$GITHUB_WORKSPACE/app/src/main/assets/18PlusList.txt"
           fi
-
+      
       - name: Setup APK Signing
         run: |
           echo "设置 APK 签名"
@@ -428,7 +427,7 @@ jobs:
           EOF
           
           echo "签名配置完成"
-
+      
       - name: Fix Package Name Issues
         if: env.PACKAGE_NAME != 'com.eggreader.app' && env.CUSTOM_VIEWS_EXIST == 'yes'
         run: |
@@ -438,7 +437,7 @@ jobs:
           
           if [ "${{ env.PACKAGE_NAME }}" != "com.eggreader.app" ]; then
             echo "检测到包名不匹配，修复布局文件中的包名引用..."
-          
+            
             # 查找并修复所有 XML 文件中的包名
             find "$GITHUB_WORKSPACE" -name "*.xml" -type f | while read -r xml_file; do
               if grep -q "com\.eggreader\.app" "$xml_file" 2>/dev/null; then
@@ -449,9 +448,9 @@ jobs:
                 rm -f "${xml_file}.bak" 2>/dev/null || true
               fi
             done
-          
+            
             echo "包名修复完成"
-          
+            
             # 清理之前生成的数据绑定文件
             if [ -d "$GITHUB_WORKSPACE/app/build" ]; then
               echo "清理生成的文件..."
@@ -462,7 +461,7 @@ jobs:
           else
             echo "包名匹配，无需修复"
           fi
-
+      
       - name: Add Essential ProGuard Rules
         run: |
           echo "添加必要的 ProGuard 规则"
@@ -665,14 +664,14 @@ jobs:
           EOF
           
           echo "ProGuard 规则添加完成"
-
+      
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: false
-          cache-cleanup: always
+          cache-cleanup: true
           dependency-graph: disabled
-
+      
       - name: Prepare Build Configuration
         run: |
           echo "=== 准备构建配置 ==="
@@ -684,7 +683,7 @@ jobs:
           else
             typeName="共存"
             echo "构建类型: 共存"
-          
+            
             # 修改 build.gradle 以支持共存版本
             if [ -f "$GITHUB_WORKSPACE/app/build.gradle" ]; then
               echo "修改 build.gradle 以支持共存版本"
@@ -699,7 +698,7 @@ jobs:
             # 更精确地替换版本号
             sed -i.bak "s/def version = \".*\"/def version = \"${{ env.VERSION }}\"/" "$GITHUB_WORKSPACE/app/build.gradle"
             rm -f "$GITHUB_WORKSPACE/app/build.gradle.bak" 2>/dev/null || true
-          
+            
             # 验证版本号是否设置成功
             grep -n "def version = " "$GITHUB_WORKSPACE/app/build.gradle" || echo "警告: 未找到版本号定义"
           fi
@@ -708,43 +707,12 @@ jobs:
           chmod +x gradlew 2>/dev/null || true
           
           echo "构建配置完成"
-
+      
       - name: Clean Build Directory
         run: |
           echo "清理构建目录"
           ./gradlew clean 2>&1 | tail -50 || echo "清理完成"
-
-      - name: Precompile Custom Views
-        if: env.DATA_BINDING_ENABLED == 'yes' && env.CUSTOM_VIEWS_EXIST == 'yes'
-        run: |
-          echo "=== 预编译自定义视图 ==="
-          echo "优先编译自定义视图类，确保数据绑定生成时能够找到符号"
-          
-          # 分步骤编译：先编译Java/Kotlin源代码，再处理数据绑定
-          echo "1. 清理之前的构建产物"
-          ./gradlew clean --build-cache --daemon || echo "清理完成"
-          
-          echo "2. 编译自定义视图类（跳过数据绑定生成）"
-          # 使用--no-build-cache避免缓存干扰，确保重新编译
-          if ./gradlew compile${{ env.product }}${{ env.type }}Kotlin compile${{ env.product }}${{ env.type }}JavaWithJavac --no-build-cache --daemon --no-parallel; then
-            echo "✅ 自定义视图编译成功"
-          else
-            echo "⚠️  自定义视图编译失败，尝试替代方案"
-            # 尝试使用更基础的编译任务
-            if ./gradlew :app:compileKotlin :app:compileJava --no-build-cache --daemon; then
-              echo "✅ 基础编译成功"
-            else
-              echo "⚠️  基础编译也失败，继续构建"
-            fi
-          fi
-          
-          echo "3. 生成数据绑定类"
-          if ./gradlew :app:dataBindingGenBaseClasses${{ env.product }}${{ env.type }} --build-cache --daemon; then
-            echo "✅ 数据绑定生成成功"
-          else
-            echo "⚠️  数据绑定生成失败，继续构建"
-          fi
-
+      
       - name: Build with Gradle
         id: gradle-build
         run: |
@@ -763,16 +731,16 @@ jobs:
             echo "build_status=success" >> $GITHUB_OUTPUT
           else
             echo "❌ 第一次构建失败，尝试修复后重新构建"
-          
+            
             # 检查是否有 missing_rules.txt
             MISSING_RULES_FILE=$(find "$GITHUB_WORKSPACE/app/build/outputs/mapping" -name "missing_rules.txt" 2>/dev/null | head -1)
             if [ -f "$MISSING_RULES_FILE" ]; then
               echo "找到 missing_rules.txt，应用缺失规则..."
               cat "$MISSING_RULES_FILE" >> "$GITHUB_WORKSPACE/app/proguard-rules.pro"
-          
+              
               echo "清理并重新构建..."
               ./gradlew clean
-          
+              
               if ./gradlew $BUILD_ARGS $BUILD_OPTIONS; then
                 echo "✅ 重新构建成功"
                 echo "build_status=success" >> $GITHUB_OUTPUT
@@ -787,7 +755,7 @@ jobs:
               exit 1
             fi
           fi
-
+      
       - name: Process Build Artifacts
         if: steps.gradle-build.outputs.build_status == 'success'
         run: |
@@ -816,7 +784,7 @@ jobs:
           if [ -n "$APK_FILES" ]; then
             echo "找到 APK 文件:"
             echo "$APK_FILES"
-          
+            
             # 移动 APK 文件
             for apk_file in $APK_FILES; do
               if [ -f "$apk_file" ]; then
@@ -837,7 +805,7 @@ jobs:
           if [ -n "$MAPPING_FILES" ]; then
             echo "找到 mapping 文件:"
             echo "$MAPPING_FILES"
-          
+            
             for mapping_file in $MAPPING_FILES; do
               if [ -f "$mapping_file" ]; then
                 mv "$mapping_file" "$GITHUB_WORKSPACE/mapping/mapping.txt"
@@ -854,7 +822,7 @@ jobs:
           if [ -n "$MISSING_RULES_FILES" ]; then
             echo "找到 missing_rules 文件:"
             echo "$MISSING_RULES_FILES"
-          
+            
             for missing_file in $MISSING_RULES_FILES; do
               if [ -f "$missing_file" ]; then
                 mv "$missing_file" "$GITHUB_WORKSPACE/mapping/missing_rules.txt"
@@ -869,7 +837,7 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/apk/" 2>/dev/null || echo "APK 目录为空"
           echo "Mapping 目录内容:"
           ls -la "$GITHUB_WORKSPACE/mapping/" 2>/dev/null || echo "Mapping 目录为空"
-
+      
       - name: Upload Missing Rules Artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -878,7 +846,7 @@ jobs:
           path: ${{ github.workspace }}/mapping/missing_rules.txt
           if-no-files-found: ignore
           retention-days: 7
-
+      
       - name: Check Build Artifacts
         if: steps.gradle-build.outputs.build_status == 'success'
         run: |
@@ -903,7 +871,7 @@ jobs:
           echo "当日提交次数: ${{ env.COMMIT_COUNT }}"
           echo "APK 文件列表:"
           ls -la "$GITHUB_WORKSPACE/apk/"*.apk 2>/dev/null || echo "无法列出 APK 文件"
-
+      
       - name: Upload APK Artifact
         if: steps.gradle-build.outputs.build_status == 'success'
         uses: actions/upload-artifact@v4
@@ -912,7 +880,7 @@ jobs:
           path: ${{ github.workspace }}/apk/*.apk
           if-no-files-found: error
           retention-days: 7
-
+      
       - name: Upload Mapping Artifact
         if: steps.gradle-build.outputs.build_status == 'success'
         uses: actions/upload-artifact@v4
@@ -935,13 +903,12 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
-          ref: ${{ github.ref }}
-
+      
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-
+      
       - name: Organize APK Files
         run: |
           echo "整理 APK 文件..."
@@ -951,7 +918,7 @@ jobs:
           find artifacts -name "*.apk" -type f | while read -r apk_file; do
             filename=$(basename "$apk_file")
             echo "处理文件: $filename"
-          
+            
             # 重命名文件以便更好识别
             if [[ "$filename" == *"原包名"* ]]; then
               new_name="${filename//原包名/release}"
@@ -960,21 +927,21 @@ jobs:
             else
               new_name="$filename"
             fi
-          
+            
             cp "$apk_file" "release_apks/$new_name"
             echo "复制: $filename -> $new_name"
           done
           
           echo "整理后的 APK 文件:"
           ls -la release_apks/ 2>/dev/null || echo "未找到 APK 文件"
-
+      
       - name: Generate Build Time
         id: build-time
         run: |
           BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
           echo "BUILD_TIME=${BUILD_TIME}"
           echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
-
+      
       - name: Create GitHub Release
         if: needs.prepare.outputs.updateLog_updated == 'yes'
         uses: softprops/action-gh-release@v2
@@ -1010,7 +977,7 @@ jobs:
           draft: false
           files: release_apks/*.apk
           fail_on_unmatched_files: false
-
+      
       - name: Create Beta GitHub Release
         if: needs.prepare.outputs.updateLog_updated != 'yes'
         uses: softprops/action-gh-release@v2
@@ -1055,7 +1022,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: gitee_artifacts/
-
+      
       - name: Organize APK Files for Gitee
         run: |
           echo "整理 APK 文件用于 Gitee..."
@@ -1064,7 +1031,7 @@ jobs:
           find gitee_artifacts -name "*.apk" -type f | while read -r apk_file; do
             filename=$(basename "$apk_file")
             echo "处理文件: $filename"
-          
+            
             if [[ "$filename" == *"原包名"* ]]; then
               new_name="${filename//原包名/release}"
             elif [[ "$filename" == *"共存"* ]]; then
@@ -1072,19 +1039,19 @@ jobs:
             else
               new_name="$filename"
             fi
-          
+            
             cp "$apk_file" "gitee_release_apks/$new_name"
           done
           
           echo "Gitee 发布文件列表:"
           ls -la gitee_release_apks/ 2>/dev/null || echo "未找到 APK 文件"
-
+      
       - name: Generate Build Time for Gitee
         id: gitee-build-time
         run: |
           BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
           echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
-
+      
       - name: Upload to Gitee Release
         continue-on-error: true
         timeout-minutes: 10
@@ -1120,7 +1087,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: lanzou_apks/
-
+      
       - name: Prepare APKs for Lanzou
         run: |
           echo "准备蓝奏云上传文件..."
@@ -1136,7 +1103,7 @@ jobs:
           
           echo "上传文件列表:"
           ls -la upload_apks/ 2>/dev/null || echo "未找到 APK 文件"
-
+      
       - name: Upload to Lanzou
         continue-on-error: true
         timeout-minutes: 10
@@ -1158,7 +1125,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: telegram_apks/
-
+      
       - name: Prepare APKs for Telegram
         id: prepare-telegram
         run: |
@@ -1186,7 +1153,7 @@ jobs:
           echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
           echo "Telegram 文件列表:"
           ls -la telegram_files/ 2>/dev/null || echo "未找到 APK 文件"
-
+      
       - name: Send to Telegram Channel
         continue-on-error: true
         timeout-minutes: 5
@@ -1221,7 +1188,7 @@ jobs:
         with:
           name: legado-app-releaseS
           path: ./sigma_apks
-
+      
       - name: Check APK Exists
         id: check-apk
         run: |
@@ -1232,7 +1199,7 @@ jobs:
             echo "releaseS APK 不存在"
             echo "apk_exists=false" >> $GITHUB_OUTPUT
           fi
-
+      
       - name: Upload to Storage Repository
         if: steps.check-apk.outputs.apk_exists == 'true'
         continue-on-error: true
