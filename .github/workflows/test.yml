@@ -1,4 +1,4 @@
-name: Test Build
+Test Build
 
 on:
   push:
@@ -181,14 +181,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 21
-      
-      # 清理旧的构建产物
-      - name: Clean previous build artifacts
-        run: |
-          echo "清理旧的构建产物..."
-          rm -rf ${{ github.workspace }}/apk/
-          rm -rf ${{ github.workspace }}/mapping/
-          rm -rf ${{ github.workspace }}/app/build/
       
       - name: Clear 18PlusList.txt
         run: |
@@ -526,34 +518,6 @@ jobs:
           echo "BUILD_TIME=${BUILD_TIME}"
           echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
       
-      # 删除旧的GitHub Release（如果有）
-      - name: Delete Old GitHub Releases
-        if: needs.prepare.outputs.updateLog_updated == 'yes'
-        run: |
-          echo "检查并删除旧版本的GitHub Release..."
-          # 获取当前版本号
-          CURRENT_VERSION="${{ needs.prepare.outputs.version }}"
-          
-          # 获取所有release，过滤出legado_app_开头的
-          releases=$(gh api -H "Accept: application/vnd.github+json" /repos/${{ github.repository }}/releases --jq '.[] | select(.name | startswith("legado_app_")) | .name + "|" + (.id|tostring)')
-          
-          echo "找到的Releases:"
-          echo "$releases"
-          
-          # 保留当前版本，删除其他版本
-          if [ -n "$releases" ]; then
-            echo "$releases" | while IFS='|' read -r release_name release_id; do
-              if [[ "$release_name" != "legado_app_${CURRENT_VERSION}" ]]; then
-                echo "删除旧版本: $release_name (ID: $release_id)"
-                gh api -X DELETE /repos/${{ github.repository }}/releases/$release_id || echo "删除失败: $release_name"
-              else
-                echo "保留当前版本: $release_name"
-              fi
-            done
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-      
       # 发布正式版本（如果有更新日志变化）
       - name: Publish Official Release
         if: needs.prepare.outputs.updateLog_updated == 'yes'
@@ -772,43 +736,6 @@ jobs:
             echo "apk_exists=false" >> $GITHUB_OUTPUT
           fi
       
-      - name: Clean old APK files in storage repo
-        if: steps.check-apk.outputs.apk_exists == 'true'
-        run: |
-          echo "清理存储仓库中的旧APK文件..."
-          # 克隆目标仓库
-          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo || {
-            echo "克隆仓库失败"
-            exit 0
-          }
-          
-          cd yuedu-repo
-          
-          # 清理sigma目录中的所有APK文件
-          if [ -d "sigma" ]; then
-            echo "清理sigma目录中的旧APK文件..."
-            rm -f sigma/*.apk
-            echo "sigma目录清理完成"
-          else
-            mkdir -p sigma
-            echo "创建sigma目录"
-          fi
-          
-          # 如果有文件被删除，提交更改
-          if git status --porcelain | grep -q "sigma/"; then
-            git config --global user.name "github-actions"
-            git config --global user.email "github-actions@github.com"
-            git add sigma/
-            git commit -m "清理旧版本的APK文件"
-            git push || {
-              echo "推送失败"
-              exit 0
-            }
-            echo "✅ 旧APK文件清理完成"
-          else
-            echo "没有需要清理的文件"
-          fi
-      
       - name: Upload to yuedu repository
         continue-on-error: true
         if: steps.check-apk.outputs.apk_exists == 'true'
@@ -816,19 +743,26 @@ jobs:
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           
-          # 进入存储仓库目录
-          cd yuedu-repo
+          # 克隆目标仓库
+          git clone https://${{ secrets.S_GITHUB_TOKEN }}@github.com/mctiantian2501314/yuedu.git yuedu-repo || {
+            echo "克隆仓库失败"
+            exit 0
+          }
+          
+          # 创建目录
+          mkdir -p yuedu-repo/sigma
           
           # 复制releaseS APK文件并重命名
-          for apk_file in ../apk-releaseS/*.apk; do
+          for apk_file in ./apk-releaseS/*.apk; do
             if [ -f "$apk_file" ]; then
-              cp "$apk_file" sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
+              cp "$apk_file" yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
               echo "复制文件: $apk_file"
             fi
           done
           
           # 检查是否有文件被复制
-          if [ -f "sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk" ]; then
+          if [ -f "yuedu-repo/sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk" ]; then
+            cd yuedu-repo
             git add sigma/legado_Sigma_${{ needs.prepare.outputs.version }}.apk
             
             # 检查是否有变化
