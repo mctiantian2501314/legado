@@ -714,6 +714,19 @@ jobs:
           echo "清理构建目录"
           ./gradlew clean 2>&1 | tail -50 || echo "清理完成"
 
+      - name: Precompile Sources
+        if: env.DATA_BINDING_ENABLED == 'yes' && env.CUSTOM_VIEWS_EXIST == 'yes'
+        run: |
+          echo "=== 预编译源代码 ==="
+          echo "预编译自定义视图类，确保数据绑定生成时能够找到符号"
+          
+          # 预编译源代码，确保自定义视图类先编译
+          if ./gradlew compile${{ env.product }}${{ env.type }}Sources --build-cache --daemon; then
+            echo "✅ 预编译成功"
+          else
+            echo "⚠️  预编译失败，继续构建"
+          fi
+
       - name: Build with Gradle
         id: gradle-build
         run: |
