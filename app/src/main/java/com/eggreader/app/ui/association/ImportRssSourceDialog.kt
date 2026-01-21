@@ -1,0 +1,297 @@
+﻿package com.eggreader.app.ui.association
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.DialogInterface
+import android.os.Bundle
+import android.text.TextUtils
+import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
+import androidx.appcompat.widget.Toolbar
+import androidx.fragment.app.viewModels
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.eggreader.app.R
+import com.eggreader.app.base.BaseDialogFragment
+import com.eggreader.app.base.adapter.ItemViewHolder
+import com.eggreader.app.base.adapter.RecyclerAdapter
+import com.eggreader.app.constant.PreferKey
+import com.eggreader.app.data.appDb
+import com.eggreader.app.data.entities.RssSource
+import com.eggreader.app.databinding.DialogCustomGroupBinding
+import com.eggreader.app.databinding.DialogRecyclerViewBinding
+import com.eggreader.app.databinding.ItemSourceImportBinding
+import com.eggreader.app.help.config.AppConfig
+import com.eggreader.app.lib.dialogs.alert
+import com.eggreader.app.lib.theme.primaryColor
+import com.eggreader.app.ui.widget.dialog.CodeDialog
+import com.eggreader.app.ui.widget.dialog.WaitDialog
+import com.eggreader.app.utils.GSON
+import com.eggreader.app.utils.dpToPx
+import com.eggreader.app.utils.fromJsonObject
+import com.eggreader.app.utils.gone
+import com.eggreader.app.utils.putPrefBoolean
+import com.eggreader.app.utils.setLayout
+import com.eggreader.app.utils.showDialogFragment
+import com.eggreader.app.utils.viewbindingdelegate.viewBinding
+import com.eggreader.app.utils.visible
+import splitties.views.onClick
+
+/**
+ * 导入rss源弹出窗口
+ */
+class ImportRssSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
+    Toolbar.OnMenuItemClickListener,
+    CodeDialog.Callback {
+
+    constructor(source: String, finishOnDismiss: Boolean = false) : this() {
+        arguments = Bundle().apply {
+            putString("source", source)
+            putBoolean("finishOnDismiss", finishOnDismiss)
+        }
+    }
+
+    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
+    private val viewModel by viewModels<ImportRssSourceViewModel>()
+    private val adapter by lazy { SourcesAdapter(requireContext()) }
+
+    override fun onStart() {
+        super.onStart()
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        if (arguments?.getBoolean("finishOnDismiss") == true) {
+            activity?.finish()
+        }
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        binding.toolBar.setBackgroundColor(primaryColor)
+        binding.toolBar.setTitle(R.string.import_rss_source)
+        binding.rotateLoading.visible()
+        initMenu()
+        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        binding.recyclerView.adapter = adapter
+        binding.tvCancel.visible()
+        binding.tvCancel.setOnClickListener {
+            dismissAllowingStateLoss()
+        }
+        binding.tvOk.visible()
+        binding.tvOk.setOnClickListener {
+            val waitDialog = WaitDialog(requireContext())
+            waitDialog.show()
+            viewModel.importSelect {
+                waitDialog.dismiss()
+                dismissAllowingStateLoss()
+            }
+        }
+        binding.tvFooterLeft.visible()
+        binding.tvFooterLeft.setOnClickListener {
+            val selectAll = viewModel.isSelectAll
+            viewModel.selectStatus.forEachIndexed { index, b ->
+                if (b != !selectAll) {
+                    viewModel.selectStatus[index] = !selectAll
+                }
+            }
+            adapter.notifyDataSetChanged()
+            upSelectText()
+        }
+        viewModel.errorLiveData.observe(this) {
+            binding.rotateLoading.gone()
+            binding.tvMsg.apply {
+                text = it
+                visible()
+            }
+        }
+        viewModel.successLiveData.observe(this) {
+            binding.rotateLoading.gone()
+            if (it > 0) {
+                adapter.setItems(viewModel.allSources)
+                upSelectText()
+            } else {
+                binding.tvMsg.apply {
+                    setText(R.string.wrong_format)
+                    visible()
+                }
+            }
+        }
+        val source = arguments?.getString("source")
+        if (source.isNullOrEmpty()) {
+            dismiss()
+            return
+        }
+        viewModel.importSource(source)
+    }
+
+    private fun upSelectText() {
+        if (viewModel.isSelectAll) {
+            binding.tvFooterLeft.text = getString(
+                R.string.select_cancel_count,
+                viewModel.selectCount,
+                viewModel.allSources.size
+            )
+        } else {
+            binding.tvFooterLeft.text = getString(
+                R.string.select_all_count,
+                viewModel.selectCount,
+                viewModel.allSources.size
+            )
+        }
+    }
+
+    private fun initMenu() {
+        binding.toolBar.setOnMenuItemClickListener(this)
+        binding.toolBar.inflateMenu(R.menu.import_source)
+        binding.toolBar.menu.apply {
+            findItem(R.id.menu_keep_original_name)
+                ?.isChecked = AppConfig.importKeepName
+            findItem(R.id.menu_keep_group)
+                ?.isChecked = AppConfig.importKeepGroup
+            findItem(R.id.menu_keep_enable)
+                ?.isChecked = AppConfig.importKeepEnable
+            findItem(R.id.menu_show_comment)
+                ?.isChecked = AppConfig.importShowComment
+            findItem(R.id.menu_select_new_source)?.isVisible = false // 暂不支持
+            findItem(R.id.menu_select_update_source)?.isVisible = false // 暂不支持
+        }
+    }
+
+    @SuppressLint("InflateParams", "NotifyDataSetChanged")
+    override fun onMenuItemClick(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_new_group -> alertCustomGroup(item)
+            R.id.menu_keep_original_name -> {
+                item.isChecked = !item.isChecked
+                putPrefBoolean(PreferKey.importKeepName, item.isChecked)
+            }
+
+            R.id.menu_keep_group -> {
+                item.isChecked = !item.isChecked
+                putPrefBoolean(PreferKey.importKeepGroup, item.isChecked)
+            }
+
+            R.id.menu_keep_enable -> {
+                item.isChecked = !item.isChecked
+                AppConfig.importKeepEnable = item.isChecked
+            }
+
+            R.id.menu_show_comment -> {
+                item.isChecked = !item.isChecked
+                AppConfig.importShowComment = item.isChecked
+                adapter.notifyDataSetChanged()
+            }
+        }
+        return false
+    }
+
+    private fun alertCustomGroup(item: MenuItem) {
+        alert(R.string.diy_edit_source_group) {
+            val alertBinding = DialogCustomGroupBinding.inflate(layoutInflater).apply {
+                val groups = appDb.rssSourceDao.allGroups()
+                textInputLayout.setHint(R.string.group_name)
+                editView.setFilterValues(groups.toList())
+                editView.dropDownHeight = 180.dpToPx()
+            }
+            customView {
+                alertBinding.root
+            }
+            okButton {
+                viewModel.isAddGroup = alertBinding.swAddGroup.isChecked
+                viewModel.groupName = alertBinding.editView.text?.toString()
+                if (viewModel.groupName.isNullOrBlank()) {
+                    item.title = getString(R.string.diy_source_group)
+                } else {
+                    val group = getString(R.string.diy_edit_source_group_title, viewModel.groupName)
+                    if (viewModel.isAddGroup) {
+                        item.title = "+$group"
+                    } else {
+                        item.title = group
+                    }
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    override fun onCodeSave(code: String, requestId: String?) {
+        requestId?.toInt()?.let {
+            GSON.fromJsonObject<RssSource>(code).getOrNull()?.let { source ->
+                viewModel.allSources[it] = source
+                adapter.setItem(it, source)
+            }
+        }
+    }
+
+    inner class SourcesAdapter(context: Context) :
+        RecyclerAdapter<RssSource, ItemSourceImportBinding>(context) {
+
+        override fun getViewBinding(parent: ViewGroup): ItemSourceImportBinding {
+            return ItemSourceImportBinding.inflate(inflater, parent, false)
+        }
+
+        override fun convert(
+            holder: ItemViewHolder,
+            binding: ItemSourceImportBinding,
+            item: RssSource,
+            payloads: MutableList<Any>
+        ) {
+            binding.apply {
+                cbSourceName.isChecked = viewModel.selectStatus[holder.layoutPosition]
+                cbSourceName.text = item.sourceName
+                if (AppConfig.importShowComment) {
+                    item.sourceComment?.takeIf{ it.isNotBlank() }?.let {
+                        showComment.text = it
+                        showComment.visible()
+                        showComment.setOnClickListener {
+                            if (showComment.maxLines == 3) {
+                                showComment.maxLines = 39
+                            } else {
+                                showComment.maxLines = 3
+                            }
+                        }
+                    } ?: run {
+                        showComment.gone()
+                    }
+                } else {
+                    showComment.gone()
+                }
+                val localSource = viewModel.checkSources[holder.layoutPosition]
+                tvSourceState.text = when {
+                    localSource == null -> "新增"
+                    item.lastUpdateTime > localSource.lastUpdateTime -> "更新"
+                    else -> "已有"
+                }
+            }
+        }
+
+        override fun registerListener(holder: ItemViewHolder, binding: ItemSourceImportBinding) {
+            binding.apply {
+                cbSourceName.setOnCheckedChangeListener { buttonView, isChecked ->
+                    if (buttonView.isPressed) {
+                        viewModel.selectStatus[holder.layoutPosition] = isChecked
+                        upSelectText()
+                    }
+                }
+                root.onClick {
+                    cbSourceName.isChecked = !cbSourceName.isChecked
+                    viewModel.selectStatus[holder.layoutPosition] = cbSourceName.isChecked
+                    upSelectText()
+                }
+                tvOpen.setOnClickListener {
+                    val source = viewModel.allSources[holder.layoutPosition]
+                    showDialogFragment(
+                        CodeDialog(
+                            GSON.toJson(source),
+                            disableEdit = false,
+                            requestId = holder.layoutPosition.toString()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+}
