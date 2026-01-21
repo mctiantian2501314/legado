@@ -78,7 +78,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         // 半屏模式参数
         const val EXTRA_HALF_SCREEN = "half_screen"
     }
-
+//1
     private lateinit var pooledWebView: PooledWebView
     private lateinit var currentWebView: WebView
 
