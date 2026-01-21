@@ -325,7 +325,7 @@ jobs:
           # 3. 检查数据绑定是否启用
           DATA_BINDING_ENABLED="no"
           if [ -f "app/build.gradle" ]; then
-            if grep -q "dataBinding.*enabled.*true" app/build.gradle || grep -q "buildFeatures.*dataBinding.*true" app/build.gradle; then
+            if grep -q "dataBinding.*=.*true" app/build.gradle || grep -q "dataBinding.*enabled.*true" app/build.gradle || grep -q "buildFeatures.*dataBinding.*true" app/build.gradle; then
               DATA_BINDING_ENABLED="yes"
               echo "数据绑定已启用"
             fi
